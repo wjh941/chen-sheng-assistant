@@ -17,6 +17,12 @@ This project supports retail, wholesale, school canteens and factory canteens, r
 - 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
 - AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
 
+## v0.6.1 交互细节 / v0.6.1 interaction details
+
+- 导入订单弹窗点击外部空白遮罩即可关闭。 / Click the backdrop outside the import dialog to close it.
+- 按 ESC 可关闭弹窗。 / Press ESC to close the dialog.
+- 取消或关闭弹窗会自动清空未提交表单。 / Closing or cancelling resets unsubmitted form data.
+
 ## v0.6 全面修复 / v0.6 full repair
 
 - 修复导航模块不可点击：使用 hash 路由并监听 `hashchange`。 / Fixed module navigation with hash routing and `hashchange` handling.
