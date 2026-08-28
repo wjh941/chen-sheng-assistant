@@ -15,6 +15,14 @@ This project supports retail, wholesale, school canteens and factory canteens, r
 - 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
 - AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
 
+## ## v0.3 升级 / v0.3 upgrade
+
+- 本地客户与商品主数据及别名匹配。 / Local customer and product master data with aliases.
+- 未匹配商品自动进入异常待审核，异常订单不能直接确认。 / Unmatched products become review exceptions and block approval.
+- 速达单号登记后才能生成拣货任务。 / Picking tasks require a recorded Sudat number.
+- 配送状态接口支持未安排、待配送、配送中、已送达。 / Delivery status API supports planned, pending, in transit and delivered.
+- 增加 `/api/catalog`、`/api/delivery/status` 接口。 / Added catalog and delivery-status APIs.
+
 ## 当前能力 / Current capabilities
 
 - 经营总览：销售额、成本、毛利、待处理事项。 / Dashboard: sales, cost, profit and pending work.
@@ -74,6 +82,9 @@ This project is not an official Sudat plugin and does not bypass Sudat permissio
 - `POST /api/orders/:id/approve` — 人工确认订单 / approve order
 - `POST /api/orders/:id/speeda` — 登记速达单号 / record Sudat number
 - `POST /api/dispatch` — 人工安排车辆路线 / manually assign vehicle route
+- `GET /api/catalog` — 客户和商品主数据 / customer and product catalog
+- `POST /api/orders/:id/pick` — 生成拣货任务 / create picking task
+- `POST /api/delivery/status` — 更新配送状态 / update delivery status
 
 ## 测试 / Tests
 
