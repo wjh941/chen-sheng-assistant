@@ -1,6 +1,6 @@
 # 晨升·盈泰本地经营智能助手（第一阶段）
 
-适配东莞市晨升膳食管理有限公司、高埗盈泰副食贸易的独立本地项目。当前为零依赖可运行 MVP，覆盖经营总览、订单队列、库存预警、拣货建议、双车调度、经营分析和速达安全适配流程。
+适配东莞市晨升膳食管理有限公司、高埗盈泰副食贸易的独立本地项目。当前为零依赖可运行 MVP，覆盖经营总览、订单队列、订单人工审核、Excel/CSV文字导入、库存预警、拣货建议、双车调度、经营分析、操作审计和速达单号登记。
 
 ## 运行
 
@@ -22,8 +22,12 @@ npm start
 
 ## 当前接口
 
-- `GET /api/overview`：总览、订单、库存、车辆演示数据
-- `POST /api/orders`：登记订单（customer、source、amount、items），不自动开速达单
+- `GET /api/overview`：总览、订单、库存、车辆、审计记录
+- `POST /api/orders`：登记订单（customer、source、amount、items）
+- `POST /api/import`：导入CSV/制表符文本（customer、content、filename），进入人工确认
+- `POST /api/orders/:id/approve`：人工确认订单
+- `POST /api/orders/:id/speeda`：登记人工速达开单后的单号
+- `POST /api/dispatch`：人工确认车辆路线
 - `GET /api/health`：本地健康检查
 
 ## 后续实施建议
