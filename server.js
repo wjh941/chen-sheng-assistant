@@ -3,7 +3,7 @@ const root=__dirname,dataFile=process.env.DATA_FILE||path.join(root,'data','demo
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8'};
 function read(){return JSON.parse(fs.readFileSync(dataFile,'utf8'))} function save(d){const tmp=dataFile+'.tmp';fs.writeFileSync(tmp,JSON.stringify(d,null,2)+'\n');fs.renameSync(tmp,dataFile)}
 function validItems(items){return Array.isArray(items)&&items.length>0&&items.every(i=>{const x=typeof i==='string'?{name:i,qty:1}:i;return x&&String(x.name||'').trim()&&Number(x.qty)>0})}
-function send(res,status,body,type='application/json; charset=utf-8'){res.writeHead(status,{'Content-Type':type});res.end(typeof body==='string'?body:JSON.stringify(body))}
+function send(res,status,body,type='application/json; charset=utf-8'){res.writeHead(status,{'Content-Type':type});if(Buffer.isBuffer(body))return res.end(body);res.end(typeof body==='string'?body:JSON.stringify(body))}
 function body(req,done){let b='';req.on('data',c=>{b+=c;if(b.length>1024*1024){send(req.res,413,{error:'请求内容超过1 MB限制'});req.destroy()}});req.on('end',()=>{try{done(JSON.parse(b||'{}'))}catch{send(req.res,400,{error:'JSON无效'})}})}
 function audit(d,action,detail){d.audit=d.audit||[];d.audit.unshift({id:Date.now(),time:new Date().toISOString(),action,detail})}
 function productFor(d,name){return (d.products||[]).find(p=>p.name===name||p.aliases?.includes(name)||p.sku===name)}
