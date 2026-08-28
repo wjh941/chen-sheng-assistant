@@ -1,5 +1,7 @@
 # 晨升·盈泰本地经营智能助手 / Chen-Sheng & Ying-Tai Local Business Assistant
 
+**当前版本 / Current version: v0.6.1**
+
 > 面向东莞市晨升膳食管理有限公司与高埗盈泰副食贸易的本地经营工作台。  
 > A local operations workspace for Dongguan Chensheng Catering Management Co., Ltd. and Gaobu Yingtai Food Trading.
 
