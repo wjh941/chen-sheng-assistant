@@ -1,17 +1,17 @@
 const http=require('http'),fs=require('fs'),path=require('path');
-const root=__dirname,dataFile=process.env.DATA_FILE||path.join(root,'data','demo.json');
+const root=__dirname,dataFile=process.env.DATA_FILE||path.join(root,'data','demo.json'),APP_VERSION='0.6.2';let cache=null,cacheMtime=0;
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8'};
-function read(){return JSON.parse(fs.readFileSync(dataFile,'utf8'))} function save(d){const tmp=dataFile+'.tmp';fs.writeFileSync(tmp,JSON.stringify(d,null,2)+'\n');fs.renameSync(tmp,dataFile)}
+function read(){const stat=fs.statSync(dataFile);if(cache&&stat.mtimeMs===cacheMtime)return structuredClone(cache);cache=JSON.parse(fs.readFileSync(dataFile,'utf8'));cacheMtime=stat.mtimeMs;return structuredClone(cache)} function save(d){const tmp=dataFile+'.tmp';fs.writeFileSync(tmp,JSON.stringify(d,null,2)+'\n');fs.renameSync(tmp,dataFile);cache=structuredClone(d);cacheMtime=fs.statSync(dataFile).mtimeMs}
 function validItems(items){return Array.isArray(items)&&items.length>0&&items.every(i=>{const x=typeof i==='string'?{name:i,qty:1}:i;return x&&String(x.name||'').trim()&&Number(x.qty)>0})}
 function send(res,status,body,type='application/json; charset=utf-8'){res.writeHead(status,{'Content-Type':type});if(Buffer.isBuffer(body))return res.end(body);res.end(typeof body==='string'?body:JSON.stringify(body))}
-function body(req,done){let b='';req.on('data',c=>{b+=c;if(b.length>1024*1024){send(req.res,413,{error:'请求内容超过1 MB限制'});req.destroy()}});req.on('end',()=>{try{done(JSON.parse(b||'{}'))}catch{send(req.res,400,{error:'JSON无效'})}})}
+function body(req,done){let b='';req.on('data',c=>{b+=c;if(b.length>2*1024*1024){send(req.res,413,{error:'请求内容超过1 MB限制'});req.destroy()}});req.on('end',()=>{try{done(JSON.parse(b||'{}'))}catch{send(req.res,400,{error:'JSON无效'})}})}
 function audit(d,action,detail){d.audit=d.audit||[];d.audit.unshift({id:Date.now(),time:new Date().toISOString(),action,detail})}
 function productFor(d,name){return (d.products||[]).find(p=>p.name===name||p.aliases?.includes(name)||p.sku===name)}
 function enrich(d,order){order.matching=(order.items||[]).map(i=>{const p=productFor(d,i.name);return {...i,sku:p?.sku||i.sku||'',matched:!!p||!!i.sku}});order.exceptions=order.matching.filter(i=>!i.matched).map(i=>'未匹配商品：'+i.name);if(order.exceptions.length&&order.status==='待人工确认')order.status='异常待审核';return order}
 function pickPlan(d,o){const used={};return o.matching.map(i=>{const p=d.inventory.find(v=>v.sku===i.sku);const qty=Number(i.qty);const available=Math.max(0,(p?.stock||0)-(used[i.sku]||0));used[i.sku]=(used[i.sku]||0)+qty;return {sku:i.sku,name:i.name,requested:qty,available,shortage:Math.max(0,qty-available),unit:i.unit||p?.unit||'件'}})}
 const server=http.createServer((req,res)=>{req.res=res;const u=new URL(req.url,'http://localhost');let d;
  if(req.method==='GET'&&u.pathname==='/api/overview'){d=read();d.orders.forEach(o=>enrich(d,o));return send(res,200,d)}
- if(req.method==='GET'&&u.pathname==='/api/health')return send(res,200,{ok:true,localOnly:true,version:'0.6.0'});
+ if(req.method==='GET'&&u.pathname==='/api/health'){d=read();return send(res,200,{ok:true,localOnly:true,version:APP_VERSION,orders:d.orders.length,customers:(d.customers||[]).length,products:(d.products||[]).length})}
  if(req.method==='GET'&&u.pathname==='/api/catalog'){d=read();return send(res,200,{customers:d.customers||[],products:d.products||[]})}
  if(req.method==='GET'&&u.pathname==='/api/audit'){d=read();return send(res,200,{items:(d.audit||[]).slice(0,100)})}
  if(req.method==='POST'&&u.pathname==='/api/orders')return body(req,x=>{if(!String(x.customer||'').trim()||!validItems(x.items))return send(res,400,{error:'客户和有效商品明细必填，数量必须大于0'});if(x.amount!==undefined&&(Number.isNaN(Number(x.amount))||Number(x.amount)<0))return send(res,400,{error:'订单金额必须是非负数字'});d=read();const order={id:'LOCAL-'+Date.now(),customer:x.customer.trim(),source:x.source||'手工录入',status:'待人工确认',amount:Number(x.amount)||0,items:x.items.map(i=>typeof i==='string'?{name:i.trim(),qty:1,unit:'件'}:i),speedaNo:'',deliveryStatus:'未安排'};enrich(d,order);d.orders.unshift(order);audit(d,'新增订单',order.id+' '+order.customer);save(d);send(res,201,order)});
@@ -21,4 +21,4 @@ const server=http.createServer((req,res)=>{req.res=res;const u=new URL(req.url,'
  if(req.method==='POST'&&u.pathname==='/api/delivery/status')return body(req,x=>{d=read();const o=d.orders.find(v=>v.id===x.orderId),allowed=['未安排','待配送','配送中','已送达'];if(!o||!allowed.includes(x.status))return send(res,400,{error:'订单或配送状态无效'});if(x.status!=='未安排'&&o.status!=='已登记速达单号')return send(res,409,{error:'请先登记速达单号'});o.deliveryStatus=x.status;audit(d,'更新配送状态',o.id+' → '+x.status);save(d);send(res,200,o)});
  let file=u.pathname==='/'?'/index.html':u.pathname,p=path.normalize(path.join(root,'public',file));if(!p.startsWith(path.join(root,'public')))return send(res,403,'Forbidden','text/plain');fs.readFile(p,(e,b)=>e?send(res,404,'Not found','text/plain'):send(res,200,b,mime[path.extname(p)]||'application/octet-stream'));
 });
-server.listen(Number(process.env.PORT)||3088,process.env.HOST||'0.0.0.0',()=>console.log('晨升经营助手 v0.5 running at http://localhost:'+(process.env.PORT||3088)));
+server.listen(Number(process.env.PORT)||3088,process.env.HOST||'0.0.0.0',()=>console.log('晨升经营助手 v'+APP_VERSION+' running at http://localhost:'+(process.env.PORT||3088)));

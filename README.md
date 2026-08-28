@@ -1,6 +1,6 @@
 # 晨升·盈泰本地经营智能助手 / Chen-Sheng & Ying-Tai Local Business Assistant
 
-**当前版本 / Current version: v0.6.1**
+**当前版本 / Current version: v0.6.2**
 
 > 面向东莞市晨升膳食管理有限公司与高埗盈泰副食贸易的本地经营工作台。  
 > A local operations workspace for Dongguan Chensheng Catering Management Co., Ltd. and Gaobu Yingtai Food Trading.
@@ -16,6 +16,13 @@ This project supports retail, wholesale, school canteens and factory canteens, r
 - 速达 5000.Online-Pro 4.00 继续作为正式业务账本。 / Sudat 5000.Online-Pro 4.00 remains the official accounting ledger.
 - 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
 - AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
+
+## v0.6.2 性能与可观测性 / v0.6.2 performance and observability
+
+- 后端增加内存缓存，减少频繁读取本地数据文件。 / Added in-memory caching to reduce repeated local file reads.
+- 写入后自动刷新缓存，保持读取一致。 / Cache is refreshed after writes for consistency.
+- 健康接口返回订单、客户、商品数量，便于判断服务状态。 / Health reports record counts for quick service diagnostics.
+- 测试使用临时数据副本，不再污染演示数据。 / Tests use isolated data copies and no longer pollute demo data.
 
 ## v0.6.1 交互细节 / v0.6.1 interaction details
 
