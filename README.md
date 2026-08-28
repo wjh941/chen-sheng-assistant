@@ -15,7 +15,15 @@ This project supports retail, wholesale, school canteens and factory canteens, r
 - 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
 - AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
 
-## ## v0.3 升级 / v0.3 upgrade
+## v0.4 升级 / v0.4 upgrade
+
+- 本地库存可用量校验，拣货任务会识别缺货。 / Local available-stock validation identifies shortages before picking.
+- 支持人工处理未匹配商品异常。 / Unmatched product exceptions can be resolved manually with a SKU.
+- 本地文件采用临时文件+替换保存，降低写入中断风险。 / Atomic temporary-file replacement reduces partial-write risk.
+- 订单导入正文限制为 1 MB。 / Request bodies are limited to 1 MB.
+- 健康检查版本升级至 0.4.0。 / Health version is now 0.4.0.
+
+## v0.3 升级 / v0.3 upgrade
 
 - 本地客户与商品主数据及别名匹配。 / Local customer and product master data with aliases.
 - 未匹配商品自动进入异常待审核，异常订单不能直接确认。 / Unmatched products become review exceptions and block approval.
@@ -83,7 +91,8 @@ This project is not an official Sudat plugin and does not bypass Sudat permissio
 - `POST /api/orders/:id/speeda` — 登记速达单号 / record Sudat number
 - `POST /api/dispatch` — 人工安排车辆路线 / manually assign vehicle route
 - `GET /api/catalog` — 客户和商品主数据 / customer and product catalog
-- `POST /api/orders/:id/pick` — 生成拣货任务 / create picking task
+- `POST /api/orders/:id/pick` — 生成并校验拣货任务 / create and validate picking task
+- `POST /api/orders/:id/resolve` — 用SKU人工处理商品异常 / resolve product exception with SKU
 - `POST /api/delivery/status` — 更新配送状态 / update delivery status
 
 ## 测试 / Tests
