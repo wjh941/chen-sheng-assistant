@@ -1,0 +1,8 @@
+{
+  "name": "chen-sheng-local-business-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "description": "晨升膳食与高埗盈泰本地经营智能助手（第一阶段）",
+  "scripts": {"start":"node server.js","dev":"node server.js","test":"node --test"},
+  "engines":{"node":">=18"}
+}

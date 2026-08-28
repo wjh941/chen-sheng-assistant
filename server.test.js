@@ -1,0 +1,3 @@
+const test=require('node:test');const assert=require('node:assert');const {execFile}=require('child_process');const http=require('http');
+test('项目文件和演示数据存在',()=>{const fs=require('fs');assert.ok(fs.existsSync('server.js'));assert.ok(JSON.parse(fs.readFileSync('data/demo.json')).orders.length>0)});
+test('健康接口返回本地模式',async()=>{const s=execFile(process.execPath,['server.js'],{env:{...process.env,PORT:'3099'}});await new Promise(r=>setTimeout(r,300));const body=await new Promise((resolve,reject)=>http.get('http://localhost:3099/api/health',r=>{let b='';r.on('data',x=>b+=x);r.on('end',()=>resolve(b))}).on('error',reject));s.kill();assert.deepEqual(JSON.parse(body),{ok:true,localOnly:true})});

@@ -1,0 +1,6 @@
+{
+  "orders":[{"id":"WX-20260828-001","customer":"东莞某中学食堂","source":"微信文字","status":"待人工确认","amount":12680,"items":18},{"id":"XL-20260828-002","customer":"高埗电子厂食堂","source":"Excel","status":"已确认待速达开单","amount":8420,"items":12},{"id":"IMG-20260828-003","customer":"晨光员工餐厅","source":"微信截图","status":"异常待审核","amount":3180,"items":6}],
+  "inventory":[{"sku":"RICE-25","name":"东北大米 25kg","stock":32,"safe":40,"unit":"袋","cost":128},{"sku":"OIL-20","name":"花生油 20L","stock":18,"safe":15,"unit":"桶","cost":168},{"sku":"EGG-30","name":"鲜鸡蛋 30枚","stock":46,"safe":60,"unit":"盘","cost":22}],
+  "vehicles":[{"name":"粤S·A1234 小货车","capacity":"1.5吨","route":"高埗—石碣","load":"待安排"},{"name":"粤S·B5678 面包车","capacity":"0.8吨","route":"万江—南城","load":"待安排"}],
+  "metrics":{"todaySales":45280,"monthSales":986540,"monthCost":781220,"monthProfit":205320,"pending":7,"lowStock":5}
+}
