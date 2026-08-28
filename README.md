@@ -15,6 +15,15 @@ This project supports retail, wholesale, school canteens and factory canteens, r
 - 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
 - AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
 
+## v0.5 升级 / v0.5 upgrade
+
+- 拣货任务支持库存校验与缺货明细。 / Picking validates stock and reports shortages.
+- 支持取消订单并记录原因。 / Orders can be cancelled with an audit reason.
+- 支持审计查询接口。 / Added an audit query endpoint.
+- 配送状态变更要求先登记速达单号。 / Delivery progress requires a recorded Sudat number first.
+- 本地数据使用临时文件原子替换保存。 / Local data uses atomic temporary-file replacement.
+- 健康版本升级至 0.5.0。 / Health version is now 0.5.0.
+
 ## v0.4 升级 / v0.4 upgrade
 
 - 本地库存可用量校验，拣货任务会识别缺货。 / Local available-stock validation identifies shortages before picking.
@@ -91,6 +100,8 @@ This project is not an official Sudat plugin and does not bypass Sudat permissio
 - `POST /api/orders/:id/speeda` — 登记速达单号 / record Sudat number
 - `POST /api/dispatch` — 人工安排车辆路线 / manually assign vehicle route
 - `GET /api/catalog` — 客户和商品主数据 / customer and product catalog
+- `GET /api/audit` — 最近操作审计 / recent audit entries
+- `POST /api/orders/:id/cancel` — 人工取消订单 / cancel an order with human action
 - `POST /api/orders/:id/pick` — 生成并校验拣货任务 / create and validate picking task
 - `POST /api/orders/:id/resolve` — 用SKU人工处理商品异常 / resolve product exception with SKU
 - `POST /api/delivery/status` — 更新配送状态 / update delivery status
