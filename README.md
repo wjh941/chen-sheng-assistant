@@ -15,6 +15,15 @@ This project supports retail, wholesale, school canteens and factory canteens, r
 - 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
 - AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
 
+## v0.6 全面修复 / v0.6 full repair
+
+- 修复导航模块不可点击：使用 hash 路由并监听 `hashchange`。 / Fixed module navigation with hash routing and `hashchange` handling.
+- 修复脚本过早执行导致页面元素未就绪的问题。 / Fixed early script execution before DOM readiness.
+- 经营总览、订单、库存、配送、分析、设置六个模块均可切换。 / All six modules are switchable.
+- 增强加载失败反馈和接口返回错误处理。 / Improved load failure and API error feedback.
+- 订单支持处理异常、确认、速达登记、拣货和取消。 / Orders support exception resolution, approval, Sudat registration, picking and cancellation.
+- 健康版本升级至 0.6.0。 / Health version is now 0.6.0.
+
 ## v0.5 升级 / v0.5 upgrade
 
 - 拣货任务支持库存校验与缺货明细。 / Picking validates stock and reports shortages.
@@ -102,6 +111,8 @@ This project is not an official Sudat plugin and does not bypass Sudat permissio
 - `GET /api/catalog` — 客户和商品主数据 / customer and product catalog
 - `GET /api/audit` — 最近操作审计 / recent audit entries
 - `POST /api/orders/:id/cancel` — 人工取消订单 / cancel an order with human action
+
+> 若浏览器显示旧页面，请使用 Ctrl+F5 强制刷新。导航使用 `#overview`、`#orders`、`#warehouse`、`#delivery`、`#analysis`、`#settings` 六个本地 hash 路由。 / If the browser shows stale content, press Ctrl+F5. Navigation uses six local hash routes.
 - `POST /api/orders/:id/pick` — 生成并校验拣货任务 / create and validate picking task
 - `POST /api/orders/:id/resolve` — 用SKU人工处理商品异常 / resolve product exception with SKU
 - `POST /api/delivery/status` — 更新配送状态 / update delivery status
