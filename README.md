@@ -1,150 +1,69 @@
-# 晨升·盈泰本地经营智能助手 / Chen-Sheng & Ying-Tai Local Business Assistant
+# 晨升·盈泰本地经营智能助手
 
-**当前版本 / Current version: v0.6.2**
+面向东莞市晨升膳食管理有限公司与高埗盈泰副食贸易的本地经营工作台：在浏览器中完成订单登记、审核、拣货与配送调度，数据全部保存在本机。速达 5000.Online-Pro 仍是正式业务账本，第一阶段不连接、不读取、不修改速达数据库（当前版本 v0.6.2）。
 
-> 面向东莞市晨升膳食管理有限公司与高埗盈泰副食贸易的本地经营工作台。  
-> A local operations workspace for Dongguan Chensheng Catering Management Co., Ltd. and Gaobu Yingtai Food Trading.
+## 功能
 
-## 项目定位 / Project scope
+以下能力均可在代码中对应验证（`server.js`、`public/`）：
 
-本项目服务于零售、批发、学校食堂和工厂食堂场景，帮助夫妻店减少微信订单、Excel订单、库存和配送方面的重复人工工作。  
-This project supports retail, wholesale, school canteens and factory canteens, reducing repetitive work around WeChat orders, spreadsheets, inventory and delivery.
+- **六个页面模块**，hash 路由切换：经营总览 `#overview`、订单中心 `#orders`、库存与拣货 `#warehouse`、配送调度 `#delivery`、经营分析 `#analysis`、系统与速达 `#settings`。
+- **订单登记**：弹窗录入客户、来源（微信文字/微信截图/Excel/CSV/商品图片，仅作为来源标记）、金额与商品明细；可选上传 `.csv`/`.txt` 文件，按"商品,数量,单位"逐行解析（兼容制表符与中英文逗号，自动跳过以"商品/品名/名称"开头的表头行）。
+- **商品匹配**：按商品主数据的名称、SKU 或别名匹配；未匹配商品使订单进入"异常待审核"，可输入 SKU 人工处理异常。
+- **订单状态流**：待人工确认 → 人工确认 → 已确认待速达开单 → 登记速达单号 → 已登记速达单号 → 生成拣货任务；未送达的订单可取消并记录原因。存在未匹配商品时不能确认订单；未登记速达单号时不能更新配送状态（未安排/待配送/配送中/已送达）。
+- **拣货校验**：生成拣货任务时核对本地库存，缺货则拒绝并列出缺口明细。
+- **库存预警与补货建议**：低于安全库存标红；建议补货量 = 安全库存 × 2 − 现有量，仅作建议、不自动采购。
+- **配送调度**：两辆车（演示数据）的配送路线人工安排。
+- **订单搜索**：按客户、订单号、来源或状态过滤。
+- **经营分析**：本月销售额、成本、毛利（取自本地数据文件中的 metrics）。
+- **操作审计**：每次新增/修改操作记录时间、动作与详情；接口可查最近 100 条，页面展示最近 12 条。
+- **健康检查**：`/api/health` 返回本地模式标识、版本号及订单/客户/商品数量。
 
-**核心原则 / Core principles**
+## 运行方式
 
-- 本地部署，企业数据不上传外部云端。 / On-premises deployment; business data is not uploaded to external cloud services.
-- 速达 5000.Online-Pro 4.00 继续作为正式业务账本。 / Sudat 5000.Online-Pro 4.00 remains the official accounting ledger.
-- 第一阶段不连接、不读取、不修改速达数据库。 / Phase 1 does not connect to, read or modify the Sudat database.
-- AI/系统只做整理建议；客户、商品、数量、价格、路线等重要变更必须人工确认。 / The assistant only prepares suggestions; important changes require human confirmation.
-
-## v0.6.2 性能与可观测性 / v0.6.2 performance and observability
-
-- 后端增加内存缓存，减少频繁读取本地数据文件。 / Added in-memory caching to reduce repeated local file reads.
-- 写入后自动刷新缓存，保持读取一致。 / Cache is refreshed after writes for consistency.
-- 健康接口返回订单、客户、商品数量，便于判断服务状态。 / Health reports record counts for quick service diagnostics.
-- 测试使用临时数据副本，不再污染演示数据。 / Tests use isolated data copies and no longer pollute demo data.
-
-## v0.6.1 交互细节 / v0.6.1 interaction details
-
-- 导入订单弹窗点击外部空白遮罩即可关闭。 / Click the backdrop outside the import dialog to close it.
-- 按 ESC 可关闭弹窗。 / Press ESC to close the dialog.
-- 取消或关闭弹窗会自动清空未提交表单。 / Closing or cancelling resets unsubmitted form data.
-
-## v0.6 全面修复 / v0.6 full repair
-
-- 修复导航模块不可点击：使用 hash 路由并监听 `hashchange`。 / Fixed module navigation with hash routing and `hashchange` handling.
-- 修复脚本过早执行导致页面元素未就绪的问题。 / Fixed early script execution before DOM readiness.
-- 经营总览、订单、库存、配送、分析、设置六个模块均可切换。 / All six modules are switchable.
-- 增强加载失败反馈和接口返回错误处理。 / Improved load failure and API error feedback.
-- 订单支持处理异常、确认、速达登记、拣货和取消。 / Orders support exception resolution, approval, Sudat registration, picking and cancellation.
-- 健康版本升级至 0.6.0。 / Health version is now 0.6.0.
-
-## v0.5 升级 / v0.5 upgrade
-
-- 拣货任务支持库存校验与缺货明细。 / Picking validates stock and reports shortages.
-- 支持取消订单并记录原因。 / Orders can be cancelled with an audit reason.
-- 支持审计查询接口。 / Added an audit query endpoint.
-- 配送状态变更要求先登记速达单号。 / Delivery progress requires a recorded Sudat number first.
-- 本地数据使用临时文件原子替换保存。 / Local data uses atomic temporary-file replacement.
-- 健康版本升级至 0.5.0。 / Health version is now 0.5.0.
-
-## v0.4 升级 / v0.4 upgrade
-
-- 本地库存可用量校验，拣货任务会识别缺货。 / Local available-stock validation identifies shortages before picking.
-- 支持人工处理未匹配商品异常。 / Unmatched product exceptions can be resolved manually with a SKU.
-- 本地文件采用临时文件+替换保存，降低写入中断风险。 / Atomic temporary-file replacement reduces partial-write risk.
-- 订单导入正文限制为 1 MB。 / Request bodies are limited to 1 MB.
-- 健康检查版本升级至 0.4.0。 / Health version is now 0.4.0.
-
-## v0.3 升级 / v0.3 upgrade
-
-- 本地客户与商品主数据及别名匹配。 / Local customer and product master data with aliases.
-- 未匹配商品自动进入异常待审核，异常订单不能直接确认。 / Unmatched products become review exceptions and block approval.
-- 速达单号登记后才能生成拣货任务。 / Picking tasks require a recorded Sudat number.
-- 配送状态接口支持未安排、待配送、配送中、已送达。 / Delivery status API supports planned, pending, in transit and delivered.
-- 增加 `/api/catalog`、`/api/delivery/status` 接口。 / Added catalog and delivery-status APIs.
-
-## 当前能力 / Current capabilities
-
-- 经营总览：销售额、成本、毛利、待处理事项。 / Dashboard: sales, cost, profit and pending work.
-- 订单登记：微信文字、微信截图、商品图片来源登记。 / Order registration from WeChat text, screenshots and product images.
-- CSV/Excel导出文本导入：按“商品,数量,单位”解析并进入审核队列。 / CSV or spreadsheet-export text import using `product,quantity,unit`.
-- 订单审核：人工确认前不能登记速达单号。 / Order approval; a Sudat number cannot be registered before approval.
-- 库存预警与补货建议。 / Low-stock alerts and replenishment suggestions.
-- 仓库拣货建议。 / Warehouse picking suggestions.
-- 两辆车配送路线人工安排。 / Manual dispatch planning for the two vehicles.
-- 速达人工开单后的单号登记。 / Recording the Sudat document number after manual entry.
-- 操作审计记录。 / Local operation audit trail.
-
-## 安装与运行 / Install and run
-
-要求 Node.js 18 或更高版本。项目无第三方运行依赖。  
-Requires Node.js 18 or newer. There are no runtime third-party dependencies.
+需要 Node.js 18 或更高版本，无第三方运行依赖。本项目不是纯静态页，页面之外的 API 与数据读写由内置 Node 服务提供。
 
 ```powershell
-cd D:\local-ai\chen-sheng-assistant
-npm start
+npm start        # 等价于 node server.js
 ```
 
-打开 / Open: `http://localhost:3088`
+打开 <http://localhost:3088>。服务默认监听 `0.0.0.0`，可用环境变量 `PORT`、`HOST` 调整；局域网无法访问时请在防火墙放行 TCP 3088。若浏览器显示旧页面，用 Ctrl+F5 强制刷新。
 
-局域网访问 / LAN access:
+## 数据与安全
 
-```text
-http://<本机局域网IP>:3088
-http://<LAN-IP-of-host>:3088
-```
+- 演示/本地数据保存在 `data/demo.json`，可用环境变量 `DATA_FILE` 指向其他文件；写入采用临时文件+原子替换，读取带基于修改时间的内存缓存。
+- 不调用任何外部网络服务；确认订单、登记速达单号、取消订单等重要变更均需人工操作确认。
+- 生产使用前请备份该数据文件。本项目不是速达官方插件，不会绕过速达权限或直接操作其生产数据库。
 
-服务默认监听 `0.0.0.0`。如局域网无法访问，请在主机防火墙放行 TCP 3088。  
-The server listens on `0.0.0.0`; allow TCP port 3088 in the host firewall if needed.
+推荐业务流程：导入/录入订单 → 人工核对并确认 → 在速达局域网客户端人工开单 → 回到助手登记速达单号 → 生成拣货任务、跟进配送状态。
 
-## 数据与安全 / Data and safety
+## API
 
-演示/本地数据保存在 `data/demo.json`，不调用外部网络服务。生产使用前应备份该文件，并规划迁移到本地 SQLite。  
-Demo/local data is stored in `data/demo.json` and no external network service is called. Back up this file before production use; migrate to local SQLite as a future hardening step.
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/api/overview` | 总览、订单（含匹配结果）、库存、车辆、审计 |
+| GET | `/api/health` | 健康检查（本地模式、版本、数量统计） |
+| GET | `/api/catalog` | 客户与商品主数据 |
+| GET | `/api/audit` | 最近 100 条操作审计 |
+| POST | `/api/orders` | 创建待人工确认订单 |
+| POST | `/api/import` | 导入 CSV/制表符文本订单 |
+| POST | `/api/orders/:id/approve` | 人工确认订单 |
+| POST | `/api/orders/:id/speeda` | 登记速达单号 |
+| POST | `/api/orders/:id/pick` | 校验库存并生成拣货任务 |
+| POST | `/api/orders/:id/resolve` | 按 SKU 人工处理商品异常 |
+| POST | `/api/orders/:id/cancel` | 取消订单并记录原因 |
+| POST | `/api/dispatch` | 人工安排车辆配送路线 |
+| POST | `/api/delivery/status` | 更新配送状态（需先登记速达单号） |
 
-推荐业务流程 / Recommended workflow:
-
-1. 导入微信内容或Excel/CSV导出文本。 / Import WeChat content or spreadsheet-export text.
-2. 检查客户、商品、数量、单位和金额。 / Check customer, product, quantity, unit and amount.
-3. 点击人工确认。 / Click human approval.
-4. 在速达局域网客户端人工开单。 / Manually create the order in the Sudat LAN client.
-5. 将速达单号登记回本助手。 / Record the Sudat document number in this assistant.
-
-本项目不是速达官方插件，也不会绕过速达权限或直接操作生产数据库。  
-This project is not an official Sudat plugin and does not bypass Sudat permissions or directly manipulate the production database.
-
-## API / 接口
-
-- `GET /api/overview` — 获取总览、订单、库存、车辆和审计记录 / dashboard data
-- `GET /api/health` — 本地健康检查 / local health check
-- `POST /api/orders` — 创建待人工确认订单 / create pending order
-- `POST /api/import` — 导入CSV/制表符文本 / import CSV or tab-delimited text
-- `POST /api/orders/:id/approve` — 人工确认订单 / approve order
-- `POST /api/orders/:id/speeda` — 登记速达单号 / record Sudat number
-- `POST /api/dispatch` — 人工安排车辆路线 / manually assign vehicle route
-- `GET /api/catalog` — 客户和商品主数据 / customer and product catalog
-- `GET /api/audit` — 最近操作审计 / recent audit entries
-- `POST /api/orders/:id/cancel` — 人工取消订单 / cancel an order with human action
-
-> 若浏览器显示旧页面，请使用 Ctrl+F5 强制刷新。导航使用 `#overview`、`#orders`、`#warehouse`、`#delivery`、`#analysis`、`#settings` 六个本地 hash 路由。 / If the browser shows stale content, press Ctrl+F5. Navigation uses six local hash routes.
-- `POST /api/orders/:id/pick` — 生成并校验拣货任务 / create and validate picking task
-- `POST /api/orders/:id/resolve` — 用SKU人工处理商品异常 / resolve product exception with SKU
-- `POST /api/delivery/status` — 更新配送状态 / update delivery status
-
-## 测试 / Tests
+## 测试
 
 ```powershell
-npm test
+npm test         # node --test，共 5 个用例，使用临时数据副本，不污染演示数据
 node --check server.js
 node --check public/app.js
 ```
 
-## GitHub / 代码仓库
+## 仓库与后续计划
 
-[https://github.com/wjh941/chen-sheng-assistant](https://github.com/wjh941/chen-sheng-assistant)
+仓库：<https://github.com/wjh941/chen-sheng-assistant>
 
-## 后续路线 / Roadmap
-
-本地 SQLite、客户和商品主数据匹配、真正的 `.xlsx` 解析、本地 OCR、审核差异对比、拣货单打印、配送状态追踪、角色权限和更完整审计日志。  
-Local SQLite, customer/product master-data matching, native `.xlsx` parsing, on-device OCR, approval diffing, picking-list printing, delivery tracking, role permissions and a stronger audit log.
+后续计划（尚未实现）：本地 SQLite 存储、原生 `.xlsx` 解析、本地 OCR、拣货单打印、角色权限等。
