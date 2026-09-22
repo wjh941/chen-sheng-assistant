@@ -1,0 +1,16 @@
+{
+  "app": {
+    "name": "晨升·盈泰经营助手",
+    "short": "晨升 · 盈泰",
+    "tagline": "本地经营智能助手",
+    "eyebrow": "DONGGUAN · LOCAL OPS",
+    "header": "早上好，今天也高效出货。",
+    "company": "东莞市晨升膳食管理有限公司 / 高埗盈泰副食贸易",
+    "footer": "● 局域网本地运行",
+    "footerSmall": "数据不会上传云端"
+  },
+  "erp": {
+    "name": "速达5000.Online-Pro 4.00",
+    "short": "速达"
+  }
+}

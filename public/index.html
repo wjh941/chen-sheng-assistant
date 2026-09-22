@@ -1,2 +1,185 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>晨升·盈泰经营助手</title><link rel="stylesheet" href="/style.css"></head><body><aside><div class="brand"><span>CS</span><div><b>晨升 · 盈泰</b><small>本地经营智能助手</small></div></div><nav><a class="active" href="#overview">经营总览</a><a href="#orders">订单中心</a><a href="#warehouse">库存与拣货</a><a href="#delivery">配送调度</a><a href="#analysis">经营分析</a><a href="#settings">系统与速达</a></nav><footer>● 局域网本地运行<br><small>数据不会上传云端</small></footer></aside><main><header><div><p class="eyebrow">DONGGUAN · LOCAL OPS</p><h1>早上好，今天也高效出货。</h1><p class="muted">东莞市晨升膳食管理有限公司 / 高埗盈泰副食贸易</p></div><button class="primary" onclick="openImport()">＋ 导入订单</button></header><section id="overview" class="page"><div class="cards"><div class="card"><label>今日销售额</label><strong id="today">—</strong><em>演示数据，非实时统计</em></div><div class="card"><label>本月销售额</label><strong id="month">—</strong><em>演示数据，非实时统计</em></div><div class="card"><label>本月预计毛利</label><strong id="profit">—</strong><em>演示数据，非实时统计</em></div><div class="card warn"><label>待处理事项</label><strong id="pending">—</strong><em>需要人工确认</em></div></div><div class="grid"><div class="panel wide"><div class="panel-head"><h2>订单处理队列</h2><button class="link" onclick="show('orders')">查看全部 →</button></div><div id="ordersList"></div></div><div class="panel"><div class="panel-head"><h2>库存预警</h2><button class="link" onclick="show('warehouse')">补货建议 →</button></div><div id="stockList"></div></div></div></section><section id="orders" class="page hidden"><div class="panel"><div class="panel-head"><h2>订单中心</h2><button class="primary small" onclick="openImport()">导入微信 / Excel / 图片</button></div><div class="toolbar"><input id="search" placeholder="搜索客户、订单号或来源" oninput="renderOrders('allOrders',state.orders)"><span class="muted">重要修改均需人工确认</span></div><div id="allOrders"></div></div></section><section id="warehouse" class="page hidden"><div class="panel"><h2>库存与仓库拣货</h2><p class="muted">根据已确认订单生成拣货任务，低库存仅作建议，不自动采购。</p><div id="warehouseList"></div></div></section><section id="delivery" class="page hidden"><div class="panel"><h2>配送调度</h2><p class="muted">两辆车 · 支持人工调整路线与装载确认。</p><div id="vehicleList"></div></div></section><section id="analysis" class="page hidden"><div class="panel"><h2>经营分析 / Business analytics</h2><div class="analysis"><div><span>本月销售额</span><b id="aSales">—</b></div><div><span>本月成本</span><b id="aCost">—</b></div><div><span>本月毛利</span><b id="aProfit">—</b></div></div><p class="notice">数据来自本地助手；速达仍是正式业务账本。</p></div></section><section id="settings" class="page hidden"><div class="panel"><h2>系统与速达安全适配层</h2><div class="safe"><b>✓ 只读适配模式 / Read-only adapter</b><p>第一阶段不连接、不读取、不修改速达5000.Online-Pro 4.00数据库。</p><ol><li>助手整理订单并标记异常</li><li>人工确认客户、商品、数量和价格</li><li>操作员在速达局域网客户端人工开单</li><li>回到助手登记速达单号进行追踪</li></ol></div><h3>最近操作 / Recent audit</h3><div id="auditList"></div></div></section></main><dialog id="import"><form method="dialog"><h2>导入订单 / Import order</h2><p class="muted">支持微信文字、截图、CSV/Excel导出文本和图片来源登记。系统只做本地整理，提交后必须人工复核。</p><label>客户名称<input id="customer" placeholder="如：东莞某学校食堂" required></label><label>来源<select id="source"><option>微信文字</option><option>微信截图</option><option>Excel/CSV</option><option>商品图片</option></select></label><label>CSV/文本文件（可选）<input id="file" type="file" accept=".csv,.txt"></label><label>订单金额<input id="amount" type="number" min="0" placeholder="0"></label><label>商品明细（每行：商品,数量,单位）<textarea id="items" required placeholder="东北大米 25kg,10,袋
-花生油 20L,5,桶"></textarea></label><div class="actions"><button class="secondary" type="button" value="cancel" onclick="closeImport()">取消</button><button class="primary" type="button" onclick="submitOrder()">提交人工确认</button></div></form></dialog><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>本地经营助手</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+  <aside>
+    <div class="brand">
+      <span id="brandMark">CS</span>
+      <div>
+        <b id="brandName">晨升 · 盈泰</b>
+        <small id="brandTagline">本地经营智能助手</small>
+      </div>
+    </div>
+    <nav>
+      <a class="active" href="#overview">经营总览</a>
+      <a href="#orders">订单中心</a>
+      <a href="#warehouse">库存与拣货</a>
+      <a href="#delivery">配送调度</a>
+      <a href="#analysis">经营分析</a>
+      <a href="#settings">系统与账本</a>
+    </nav>
+    <footer><span id="footerNote">● 局域网本地运行</span><br><small id="footerSmall">数据不会上传云端</small></footer>
+  </aside>
+
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow" id="eyebrow">DONGGUAN · LOCAL OPS</p>
+        <h1 id="headerTitle">早上好，今天也高效出货。</h1>
+        <p class="muted" id="companyLine">东莞市晨升膳食管理有限公司 / 高埗盈泰副食贸易</p>
+      </div>
+      <div class="header-actions">
+        <button class="secondary" id="btnRefresh">刷新</button>
+        <button class="primary" id="btnImport" onclick="openImport()">＋ 导入订单</button>
+      </div>
+    </header>
+
+    <!-- 经营总览 -->
+    <section id="overview" class="page">
+      <div class="cards">
+        <div class="card"><label>今日销售额</label><strong id="today">—</strong><em>按本地订单实时统计</em></div>
+        <div class="card"><label>本月销售额</label><strong id="month">—</strong><em>按本地订单实时统计</em></div>
+        <div class="card"><label>本月预估毛利</label><strong id="profit">—</strong><em>按商品成本价估算</em></div>
+        <div class="card warn"><label>待处理事项</label><strong id="pending">—</strong><em>需要人工确认</em></div>
+      </div>
+      <div class="grid">
+        <div class="panel wide">
+          <div class="panel-head"><h2>订单处理队列</h2><button class="link" onclick="show('orders')">查看全部 →</button></div>
+          <div id="ordersList"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h2>库存预警</h2><button class="link" onclick="show('warehouse')">补货建议 →</button></div>
+          <div id="stockList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 订单中心 -->
+    <section id="orders" class="page hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>订单中心</h2>
+          <button class="primary small" onclick="openImport()">导入微信 / Excel / 图片</button>
+        </div>
+        <div class="toolbar">
+          <input id="search" placeholder="搜索客户、订单号或来源" oninput="renderOrders('allOrders',state.orders)">
+          <span class="muted">重要修改均需人工确认</span>
+        </div>
+        <div id="allOrders"></div>
+      </div>
+    </section>
+
+    <!-- 库存与拣货 -->
+    <section id="warehouse" class="page hidden">
+      <div class="panel">
+        <h2>库存与拣货</h2>
+        <p class="muted">根据已确认订单生成拣货任务并自动扣减库存；低库存仅作建议，不自动采购。可直接做入库 / 出库 / 盘点调整。</p>
+        <div id="warehouseList"></div>
+      </div>
+    </section>
+
+    <!-- 配送调度 -->
+    <section id="delivery" class="page hidden">
+      <div class="panel">
+        <h2>配送调度</h2>
+        <p class="muted">车辆路线支持人工调整；配送状态只能前进（未安排 → 待配送 → 配送中 → 已送达），不能回退。</p>
+        <div id="vehicleList"></div>
+      </div>
+    </section>
+
+    <!-- 经营分析 -->
+    <section id="analysis" class="page hidden">
+      <div class="panel">
+        <h2>经营分析 / Business analytics</h2>
+        <div class="analysis">
+          <div><span>本月销售额</span><b id="aSales">—</b></div>
+          <div><span>本月成本（按商品成本价估算）</span><b id="aCost">—</b></div>
+          <div><span>本月预估毛利</span><b id="aProfit">—</b></div>
+        </div>
+        <p class="notice">数据来自本地订单实时汇总（不含已取消订单）；<span data-erp-name>速达</span> 仍是正式业务账本。</p>
+      </div>
+    </section>
+
+    <!-- 系统与账本 -->
+    <section id="settings" class="page hidden">
+      <div class="panel">
+        <h2>系统与外部账本安全适配层</h2>
+        <div class="safe">
+          <b>✓ 只读适配模式 / Read-only adapter</b>
+          <p>第一阶段不连接、不读取、不修改 <span data-erp-name>速达</span> 数据库。</p>
+          <ol>
+            <li>助手整理订单并标记异常</li>
+            <li>人工确认客户、商品、数量和价格</li>
+            <li>操作员在<span data-erp-short>速达</span>局域网客户端人工开单</li>
+            <li>回到助手登记<span data-erp-short>速达</span>单号进行追踪</li>
+          </ol>
+        </div>
+        <h3>系统信息</h3>
+        <div class="safe">
+          <p>版本：<span id="cfgVersion">—</span>　｜　数据文件：data/<span id="cfgDataFile">—</span>　｜　商家配置：config/<span id="cfgConfigFile">—</span></p>
+          <p>监听地址：<span id="cfgHost">—</span>（更换商家只需替换商家配置与数据文件，见 README「适配新商家」）</p>
+          <p><a class="link" href="/api/export">⬇ 下载数据备份（JSON）</a></p>
+        </div>
+        <h3>最近操作 / Recent audit</h3>
+        <div id="auditList"></div>
+      </div>
+    </section>
+
+    <!-- 导入订单弹窗 -->
+    <dialog id="import">
+      <form id="importForm">
+        <h2>导入订单 / Import order</h2>
+        <p class="muted">支持微信文字、截图、CSV/Excel 导出文本和图片来源登记。系统只做本地整理，提交后必须人工复核。</p>
+        <label>客户名称<input id="customer" placeholder="如：东莞某中学食堂" required></label>
+        <label>来源
+          <select id="source">
+            <option>微信文字</option>
+            <option>微信截图</option>
+            <option>Excel/CSV</option>
+            <option>商品图片</option>
+          </select>
+        </label>
+        <label>CSV/文本文件（可选）<input id="file" type="file" accept=".csv,.txt"></label>
+        <label>订单金额<input id="amount" type="number" min="0" placeholder="0"></label>
+        <label>商品明细（每行：商品,数量,单位）<textarea id="items" required placeholder="东北大米 25kg,10,袋
+花生油 20L,5,桶"></textarea></label>
+        <div class="actions">
+          <button class="secondary" type="button" data-close>取消</button>
+          <button class="primary" type="submit">提交人工确认</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 库存调整弹窗 -->
+    <dialog id="adjust">
+      <form id="adjustForm">
+        <h2>库存调整</h2>
+        <p class="muted" id="adjustName"></p>
+        <input type="hidden" id="adjustSku">
+        <label>调整类型
+          <select id="adjustType">
+            <option value="in">入库（增加）</option>
+            <option value="out">出库（减少）</option>
+            <option value="set">盘点（设为指定值）</option>
+          </select>
+        </label>
+        <label>数量<input id="adjustQty" type="number" min="0" step="1" required></label>
+        <label>原因（可选）<input id="adjustReason" placeholder="如：采购到货 / 领用出库 / 盘盈盘亏"></label>
+        <div class="actions">
+          <button class="secondary" type="button" data-close>取消</button>
+          <button class="primary" type="submit">确认调整</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+
+</html>

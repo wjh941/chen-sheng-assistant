@@ -3,561 +3,128 @@
     {
       "id": "C001",
       "name": "东莞某中学食堂",
-      "aliases": [
-        "某中学",
-        "东莞中学"
-      ]
+      "aliases": ["某中学", "东莞中学"]
     },
     {
       "id": "C002",
       "name": "高埗电子厂食堂",
-      "aliases": [
-        "电子厂",
-        "高埗工厂"
-      ]
+      "aliases": ["电子厂", "高埗工厂"]
     }
   ],
   "products": [
     {
       "sku": "RICE-25",
       "name": "东北大米 25kg",
-      "aliases": [
-        "大米",
-        "东北米"
-      ]
+      "aliases": ["大米", "东北米"]
     },
     {
       "sku": "OIL-20",
       "name": "花生油 20L",
-      "aliases": [
-        "花生油"
-      ]
+      "aliases": ["花生油"]
     },
     {
       "sku": "EGG-30",
       "name": "鲜鸡蛋 30枚",
-      "aliases": [
-        "鸡蛋",
-        "鲜蛋"
-      ]
+      "aliases": ["鸡蛋", "鲜蛋"]
     }
   ],
   "orders": [
     {
-      "id": "LOCAL-1787911290875",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已登记速达单号",
-      "amount": 100,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "SD-1",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T10:01:30.883Z",
-      "pickPlan": [
-        {
-          "sku": "RICE-25",
-          "name": "大米",
-          "requested": 2,
-          "available": 32,
-          "shortage": 0,
-          "unit": "袋"
-        }
-      ],
-      "pickStatus": "已生成拣货任务"
-    },
-    {
-      "id": "LOCAL-1787911290549",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已确认待速达开单",
-      "amount": 0,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T10:01:30.555Z"
-    },
-    {
-      "id": "LOCAL-1787911290215",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "异常待审核",
-      "amount": 0,
-      "items": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱",
-          "sku": "",
-          "matched": false
-        }
-      ],
-      "exceptions": [
-        "未匹配商品：未知菜"
-      ]
-    },
-    {
-      "id": "LOCAL-1787911231271",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已登记速达单号",
-      "amount": 100,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "SD-1",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T10:00:31.277Z",
-      "pickPlan": [
-        {
-          "sku": "RICE-25",
-          "name": "大米",
-          "requested": 2,
-          "available": 32,
-          "shortage": 0,
-          "unit": "袋"
-        }
-      ],
-      "pickStatus": "已生成拣货任务"
-    },
-    {
-      "id": "LOCAL-1787911230946",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已确认待速达开单",
-      "amount": 0,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T10:00:30.952Z"
-    },
-    {
-      "id": "LOCAL-1787911230621",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "异常待审核",
-      "amount": 0,
-      "items": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱",
-          "sku": "",
-          "matched": false
-        }
-      ],
-      "exceptions": [
-        "未匹配商品：未知菜"
-      ]
-    },
-    {
-      "id": "LOCAL-1787911121012",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已登记速达单号",
-      "amount": 100,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "SD-1",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T09:58:41.019Z",
-      "pickPlan": [
-        {
-          "sku": "RICE-25",
-          "name": "大米",
-          "requested": 2,
-          "available": 32,
-          "shortage": 0,
-          "unit": "袋"
-        }
-      ],
-      "pickStatus": "已生成拣货任务"
-    },
-    {
-      "id": "LOCAL-1787911120682",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已确认待速达开单",
-      "amount": 0,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T09:58:40.688Z"
-    },
-    {
-      "id": "LOCAL-1787911120358",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "异常待审核",
-      "amount": 0,
-      "items": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱",
-          "sku": "",
-          "matched": false
-        }
-      ],
-      "exceptions": [
-        "未匹配商品：未知菜"
-      ]
-    },
-    {
-      "id": "LOCAL-1787910754063",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已登记速达单号",
-      "amount": 100,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "SD-1",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T09:52:34.074Z",
-      "pickPlan": [
-        {
-          "sku": "RICE-25",
-          "name": "大米",
-          "requested": 2,
-          "available": 32,
-          "shortage": 0,
-          "unit": "袋"
-        }
-      ],
-      "pickStatus": "已生成拣货任务"
-    },
-    {
-      "id": "LOCAL-1787910753718",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已确认待速达开单",
-      "amount": 0,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T09:52:33.726Z"
-    },
-    {
-      "id": "LOCAL-1787910753391",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "异常待审核",
-      "amount": 0,
-      "items": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱",
-          "sku": "",
-          "matched": false
-        }
-      ],
-      "exceptions": [
-        "未匹配商品：未知菜"
-      ]
-    },
-    {
-      "id": "LOCAL-1787910711674",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已登记速达单号",
-      "amount": 100,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "SD-1",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T09:51:51.686Z",
-      "pickPlan": [
-        {
-          "sku": "RICE-25",
-          "name": "大米",
-          "requested": 2,
-          "available": 32,
-          "shortage": 0,
-          "unit": "袋"
-        }
-      ],
-      "pickStatus": "已生成拣货任务"
-    },
-    {
-      "id": "LOCAL-1787910711334",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "已确认待速达开单",
-      "amount": 0,
-      "items": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "大米",
-          "qty": 2,
-          "unit": "袋",
-          "sku": "RICE-25",
-          "matched": true
-        }
-      ],
-      "exceptions": [],
-      "confirmedAt": "2026-08-28T09:51:51.343Z"
-    },
-    {
-      "id": "LOCAL-1787910710995",
-      "customer": "测试食堂",
-      "source": "手工录入",
-      "status": "异常待审核",
-      "amount": 0,
-      "items": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱"
-        }
-      ],
-      "speedaNo": "",
-      "deliveryStatus": "未安排",
-      "matching": [
-        {
-          "name": "未知菜",
-          "qty": 2,
-          "unit": "箱",
-          "sku": "",
-          "matched": false
-        }
-      ],
-      "exceptions": [
-        "未匹配商品：未知菜"
-      ]
-    },
-    {
-      "id": "WX-20260828-001",
+      "id": "WX-DEMO-001",
       "customer": "东莞某中学食堂",
       "source": "微信文字",
       "status": "待人工确认",
       "amount": 12680,
       "items": [
-        {
-          "name": "东北大米 25kg",
-          "qty": 50,
-          "unit": "袋"
-        },
-        {
-          "name": "花生油 20L",
-          "qty": 10,
-          "unit": "桶"
-        }
+        { "name": "东北大米 25kg", "qty": 50, "unit": "袋" },
+        { "name": "花生油 20L", "qty": 10, "unit": "桶" }
       ],
+      "createdAt": "2026-08-28T01:30:00.000Z",
       "speedaNo": "",
       "deliveryStatus": "未安排"
     },
     {
-      "id": "XL-20260828-002",
+      "id": "XL-DEMO-002",
       "customer": "高埗电子厂食堂",
       "source": "Excel",
       "status": "已确认待速达开单",
       "amount": 8420,
       "items": [
-        {
-          "name": "鲜鸡蛋 30枚",
-          "qty": 20,
-          "unit": "盘"
-        }
+        { "name": "鲜鸡蛋 30枚", "qty": 20, "unit": "盘" }
       ],
+      "createdAt": "2026-08-28T02:10:00.000Z",
+      "confirmedAt": "2026-08-28T02:15:00.000Z",
       "speedaNo": "",
       "deliveryStatus": "未安排"
     },
     {
-      "id": "IMG-20260828-003",
+      "id": "IMG-DEMO-003",
       "customer": "晨光员工餐厅",
       "source": "微信截图",
       "status": "异常待审核",
       "amount": 3180,
       "items": [
-        {
-          "name": "冻鸡腿",
-          "qty": 30,
-          "unit": "包"
-        }
+        { "name": "冻鸡腿", "qty": 30, "unit": "包" }
       ],
+      "createdAt": "2026-08-28T02:40:00.000Z",
+      "speedaNo": "",
+      "deliveryStatus": "未安排"
+    },
+    {
+      "id": "LOCAL-DEMO-004",
+      "customer": "高埗电子厂食堂",
+      "source": "手工录入",
+      "status": "已登记速达单号",
+      "amount": 2560,
+      "items": [
+        { "name": "东北大米 25kg", "qty": 20, "unit": "袋" }
+      ],
+      "createdAt": "2026-08-28T03:00:00.000Z",
+      "confirmedAt": "2026-08-28T03:05:00.000Z",
+      "speedaNo": "SD-20260828-001",
+      "deliveryStatus": "配送中",
+      "matching": [
+        { "name": "东北大米 25kg", "qty": 20, "unit": "袋", "sku": "RICE-25", "matched": true }
+      ],
+      "exceptions": [],
+      "pickPlan": [
+        { "sku": "RICE-25", "name": "东北大米 25kg", "requested": 20, "available": 72, "shortage": 0, "unit": "袋" }
+      ],
+      "pickStatus": "已生成拣货任务"
+    },
+    {
+      "id": "LOCAL-DEMO-005",
+      "customer": "东莞某中学食堂",
+      "source": "手工录入",
+      "status": "已登记速达单号",
+      "amount": 1680,
+      "items": [
+        { "name": "花生油 20L", "qty": 10, "unit": "桶" }
+      ],
+      "createdAt": "2026-08-28T03:30:00.000Z",
+      "confirmedAt": "2026-08-28T03:31:00.000Z",
+      "speedaNo": "SD-20260828-002",
+      "deliveryStatus": "已送达",
+      "matching": [
+        { "name": "花生油 20L", "qty": 10, "unit": "桶", "sku": "OIL-20", "matched": true }
+      ],
+      "exceptions": [],
+      "pickPlan": [
+        { "sku": "OIL-20", "name": "花生油 20L", "requested": 10, "available": 18, "shortage": 0, "unit": "桶" }
+      ],
+      "pickStatus": "已生成拣货任务"
+    },
+    {
+      "id": "LOCAL-DEMO-006",
+      "customer": "高埗电子厂食堂",
+      "source": "手工录入",
+      "status": "已取消",
+      "cancelReason": "客户改期，重新下单",
+      "amount": 440,
+      "items": [
+        { "name": "鲜鸡蛋 30枚", "qty": 20, "unit": "盘" }
+      ],
+      "createdAt": "2026-08-28T03:45:00.000Z",
       "speedaNo": "",
       "deliveryStatus": "未安排"
     }
@@ -566,7 +133,7 @@
     {
       "sku": "RICE-25",
       "name": "东北大米 25kg",
-      "stock": 32,
+      "stock": 72,
       "safe": 40,
       "unit": "袋",
       "cost": 128
@@ -593,7 +160,7 @@
       "name": "粤S·A1234 小货车",
       "capacity": "1.5吨",
       "route": "高埗—石碣",
-      "load": "待安排"
+      "load": "已安排"
     },
     {
       "name": "粤S·B5678 面包车",
@@ -602,228 +169,40 @@
       "load": "待安排"
     }
   ],
-  "metrics": {
-    "todaySales": 45280,
-    "monthSales": 986540,
-    "monthCost": 781220,
-    "monthProfit": 205320,
-    "pending": 7,
-    "lowStock": 5
-  },
   "audit": [
     {
-      "id": 1787911290889,
-      "time": "2026-08-28T10:01:30.889Z",
-      "action": "生成拣货任务",
-      "detail": "LOCAL-1787911290875"
+      "id": 1,
+      "time": "2026-08-28T03:45:30.000Z",
+      "action": "人工取消订单",
+      "detail": "LOCAL-DEMO-006 客户改期，重新下单"
     },
     {
-      "id": 1787911290886,
-      "time": "2026-08-28T10:01:30.886Z",
+      "id": 2,
+      "time": "2026-08-28T03:35:00.000Z",
+      "action": "更新配送状态",
+      "detail": "LOCAL-DEMO-005 → 已送达"
+    },
+    {
+      "id": 3,
+      "time": "2026-08-28T03:06:00.000Z",
+      "action": "生成拣货任务（已扣减库存）",
+      "detail": "LOCAL-DEMO-004"
+    },
+    {
+      "id": 4,
+      "time": "2026-08-28T03:05:00.000Z",
       "action": "登记速达单号",
-      "detail": "LOCAL-1787911290875 → SD-1"
+      "detail": "LOCAL-DEMO-004 → SD-20260828-001"
     },
     {
-      "id": 1787911290883,
-      "time": "2026-08-28T10:01:30.883Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787911290875"
-    },
-    {
-      "id": 1787911290876,
-      "time": "2026-08-28T10:01:30.876Z",
+      "id": 5,
+      "time": "2026-08-28T03:00:00.000Z",
       "action": "新增订单",
-      "detail": "LOCAL-1787911290875 测试食堂"
-    },
-    {
-      "id": 1787911290555,
-      "time": "2026-08-28T10:01:30.555Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787911290549"
-    },
-    {
-      "id": 1787911290549,
-      "time": "2026-08-28T10:01:30.549Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911290549 测试食堂"
-    },
-    {
-      "id": 1787911290215,
-      "time": "2026-08-28T10:01:30.215Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911290215 测试食堂"
-    },
-    {
-      "id": 1787911231284,
-      "time": "2026-08-28T10:00:31.284Z",
-      "action": "生成拣货任务",
-      "detail": "LOCAL-1787911231271"
-    },
-    {
-      "id": 1787911231280,
-      "time": "2026-08-28T10:00:31.280Z",
-      "action": "登记速达单号",
-      "detail": "LOCAL-1787911231271 → SD-1"
-    },
-    {
-      "id": 1787911231277,
-      "time": "2026-08-28T10:00:31.277Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787911231271"
-    },
-    {
-      "id": 1787911231271,
-      "time": "2026-08-28T10:00:31.271Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911231271 测试食堂"
-    },
-    {
-      "id": 1787911230952,
-      "time": "2026-08-28T10:00:30.952Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787911230946"
-    },
-    {
-      "id": 1787911230946,
-      "time": "2026-08-28T10:00:30.946Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911230946 测试食堂"
-    },
-    {
-      "id": 1787911230621,
-      "time": "2026-08-28T10:00:30.621Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911230621 测试食堂"
-    },
-    {
-      "id": 1787911121025,
-      "time": "2026-08-28T09:58:41.025Z",
-      "action": "生成拣货任务",
-      "detail": "LOCAL-1787911121012"
-    },
-    {
-      "id": 1787911121022,
-      "time": "2026-08-28T09:58:41.022Z",
-      "action": "登记速达单号",
-      "detail": "LOCAL-1787911121012 → SD-1"
-    },
-    {
-      "id": 1787911121019,
-      "time": "2026-08-28T09:58:41.019Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787911121012"
-    },
-    {
-      "id": 1787911121012,
-      "time": "2026-08-28T09:58:41.012Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911121012 测试食堂"
-    },
-    {
-      "id": 1787911120688,
-      "time": "2026-08-28T09:58:40.688Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787911120682"
-    },
-    {
-      "id": 1787911120683,
-      "time": "2026-08-28T09:58:40.683Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911120682 测试食堂"
-    },
-    {
-      "id": 1787911120359,
-      "time": "2026-08-28T09:58:40.359Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787911120358 测试食堂"
-    },
-    {
-      "id": 1787910754082,
-      "time": "2026-08-28T09:52:34.082Z",
-      "action": "生成拣货任务",
-      "detail": "LOCAL-1787910754063"
-    },
-    {
-      "id": 1787910754078,
-      "time": "2026-08-28T09:52:34.078Z",
-      "action": "登记速达单号",
-      "detail": "LOCAL-1787910754063 → SD-1"
-    },
-    {
-      "id": 1787910754074,
-      "time": "2026-08-28T09:52:34.074Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787910754063"
-    },
-    {
-      "id": 1787910754063,
-      "time": "2026-08-28T09:52:34.063Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787910754063 测试食堂"
-    },
-    {
-      "id": 1787910753726,
-      "time": "2026-08-28T09:52:33.726Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787910753718"
-    },
-    {
-      "id": 1787910753718,
-      "time": "2026-08-28T09:52:33.718Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787910753718 测试食堂"
-    },
-    {
-      "id": 1787910753391,
-      "time": "2026-08-28T09:52:33.391Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787910753391 测试食堂"
-    },
-    {
-      "id": 1787910711694,
-      "time": "2026-08-28T09:51:51.694Z",
-      "action": "生成拣货任务",
-      "detail": "LOCAL-1787910711674"
-    },
-    {
-      "id": 1787910711690,
-      "time": "2026-08-28T09:51:51.690Z",
-      "action": "登记速达单号",
-      "detail": "LOCAL-1787910711674 → SD-1"
-    },
-    {
-      "id": 1787910711686,
-      "time": "2026-08-28T09:51:51.686Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787910711674"
-    },
-    {
-      "id": 1787910711675,
-      "time": "2026-08-28T09:51:51.675Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787910711674 测试食堂"
-    },
-    {
-      "id": 1787910711343,
-      "time": "2026-08-28T09:51:51.343Z",
-      "action": "人工确认订单",
-      "detail": "LOCAL-1787910711334"
-    },
-    {
-      "id": 1787910711335,
-      "time": "2026-08-28T09:51:51.335Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787910711334 测试食堂"
-    },
-    {
-      "id": 1787910710995,
-      "time": "2026-08-28T09:51:50.995Z",
-      "action": "新增订单",
-      "detail": "LOCAL-1787910710995 测试食堂"
+      "detail": "LOCAL-DEMO-004 高埗电子厂食堂"
     }
   ],
   "appMeta": {
-    "version": "0.6.0",
-    "lastReset": "2026-08-28"
+    "version": "0.7.0",
+    "seededAt": "2026-08-28"
   }
 }
