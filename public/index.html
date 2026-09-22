@@ -70,6 +70,7 @@
         </div>
         <div class="toolbar">
           <input id="search" placeholder="搜索客户、订单号或来源" oninput="renderOrders('allOrders',state.orders)">
+          <select id="statusFilter" class="status-select"><option value="">全部状态</option></select>
           <span class="muted">重要修改均需人工确认</span>
         </div>
         <div id="allOrders"></div>
@@ -103,7 +104,7 @@
           <div><span>本月成本（按商品成本价估算）</span><b id="aCost">—</b></div>
           <div><span>本月预估毛利</span><b id="aProfit">—</b></div>
         </div>
-        <p class="notice">数据来自本地订单实时汇总（不含已取消订单）；<span data-erp-name>速达</span> 仍是正式业务账本。</p>
+        <p class="notice">数据来自本地订单实时汇总（不含已取消订单）；<span data-erp-name>速达</span> 仍是正式业务账本。<a class="link" href="/api/export/orders.xlsx">⬇ 导出订单对账 Excel</a></p>
       </div>
     </section>
 
@@ -125,8 +126,10 @@
         <div class="safe">
           <p>版本：<span id="cfgVersion">—</span>　｜　数据文件：data/<span id="cfgDataFile">—</span>　｜　商家配置：config/<span id="cfgConfigFile">—</span></p>
           <p>监听地址：<span id="cfgHost">—</span>（更换商家只需替换商家配置与数据文件，见 README「适配新商家」）</p>
-          <p><a class="link" href="/api/export">⬇ 下载数据备份（JSON）</a></p>
+          <p><a class="link" href="/api/export">⬇ 下载数据备份（JSON）</a>　<a class="link" href="/api/export/orders.xlsx">⬇ 导出订单对账 Excel</a></p>
+          <p>每日首次写入会自动快照到 data/backups/（保留最近 14 份）。<span data-erp-name>速达</span> 适配为只读模式。</p>
         </div>
+        <label>操作员姓名（记录到操作审计）<input id="operatorName" placeholder="如：张三" maxlength="20"></label>
         <h3>最近操作 / Recent audit</h3>
         <div id="auditList"></div>
       </div>
@@ -136,7 +139,7 @@
     <dialog id="import">
       <form id="importForm">
         <h2>导入订单 / Import order</h2>
-        <p class="muted">支持微信文字、截图、CSV/Excel 导出文本和图片来源登记。系统只做本地整理，提交后必须人工复核。</p>
+        <p class="muted">支持微信文字、截图、CSV/Excel(.xlsx) 导出表格和图片来源登记。系统只做本地整理，提交后必须人工复核。</p>
         <label>客户名称<input id="customer" placeholder="如：东莞某中学食堂" required></label>
         <label>来源
           <select id="source">
@@ -146,7 +149,7 @@
             <option>商品图片</option>
           </select>
         </label>
-        <label>CSV/文本文件（可选）<input id="file" type="file" accept=".csv,.txt"></label>
+        <label>CSV / Excel 文件（可选，支持 .csv .txt .xlsx）<input id="file" type="file" accept=".csv,.txt,.xlsx"></label>
         <label>订单金额<input id="amount" type="number" min="0" placeholder="0"></label>
         <label>商品明细（每行：商品,数量,单位）<textarea id="items" required placeholder="东北大米 25kg,10,袋
 花生油 20L,5,桶"></textarea></label>
@@ -178,6 +181,26 @@
         </div>
       </form>
     </dialog>
+
+    <!-- 订单编辑弹窗（确认前可改） -->
+    <dialog id="edit">
+      <form id="editForm">
+        <h2>修改订单</h2>
+        <p class="muted">仅"待人工确认 / 异常待审核"订单可修改；提交后重新匹配商品，异常商品会再次进入待审核。</p>
+        <input type="hidden" id="editId">
+        <label>客户名称<input id="editCustomer" required></label>
+        <label>订单金额<input id="editAmount" type="number" min="0" placeholder="0"></label>
+        <label>商品明细（每行：商品,数量,单位）<textarea id="editItems" required></textarea></label>
+        <div class="actions">
+          <button class="secondary" type="button" data-close>取消</button>
+          <button class="primary" type="submit">保存修改</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 拣货单打印区（仅打印时可见） -->
+    <div id="printArea"></div>
+  </main>
 
     <script src="/app.js"></script>
   </body>

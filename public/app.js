@@ -7,6 +7,9 @@
 let state = null;
 let config = null;
 let configMeta = null;
+let statusFilter = '';
+const PAGE_SIZE = 50;
+const pageLimit = {};
 
 // ---------- 小工具 ----------
 const $ = id => document.getElementById(id);
@@ -20,7 +23,10 @@ function disp(s) {
 }
 
 async function api(url, opt) {
+  opt = opt || {};
+  opt.headers = Object.assign({ 'X-Operator': encodeURIComponent(localStorage.getItem('ops_operator') || '') }, opt.headers || {});
   const r = await fetch(url, opt);
+  if (r.status === 401) { location.href = '/login'; throw Error('请先登录'); }
   let x;
   try { x = await r.json(); } catch { x = { error: '服务器返回无效内容' }; }
   if (!r.ok) throw Error(x.error || '操作失败');
@@ -51,6 +57,11 @@ function applyConfig() {
   $('footerSmall').textContent = config.app.footerSmall;
   document.querySelectorAll('[data-erp-name]').forEach(el => { el.textContent = config.erp.name; });
   document.querySelectorAll('[data-erp-short]').forEach(el => { el.textContent = config.erp.short; });
+  const sel = $('statusFilter');
+  if (sel) {
+    const statuses = ['待人工确认', '异常待审核', '已确认待速达开单', '已登记速达单号', '已取消'];
+    sel.innerHTML = '<option value="">全部状态</option>' + statuses.map(s => `<option value="${esc(s)}"${s === statusFilter ? ' selected' : ''}>${esc(disp(s))}</option>`).join('');
+  }
   if (configMeta) {
     $('cfgVersion').textContent = 'v' + configMeta.version;
     $('cfgDataFile').textContent = configMeta.dataFile;
@@ -60,18 +71,23 @@ function applyConfig() {
 }
 
 // ---------- 订单渲染（纯文本插值全部转义；操作按钮走 data-action 委托） ----------
-function renderOrders(id, orders) {
+function renderOrders(id, orders, applyFilter) {
+  let rows = orders;
+  if (applyFilter !== false && statusFilter) rows = rows.filter(o => o.status === statusFilter);
   const q = ($('search')?.value || '').trim().toLowerCase();
-  const rows = orders.filter(o => !q || [o.id, o.customer, o.source, disp(o.status)].join(' ').toLowerCase().includes(q));
-  $(id).innerHTML = rows.map(o => {
+  if (q) rows = rows.filter(o => [o.id, o.customer, o.source, disp(o.status)].join(' ').toLowerCase().includes(q));
+  const limit = pageLimit[id] || PAGE_SIZE;
+  const shown = rows.slice(0, limit);
+  $(id).innerHTML = shown.map(o => {
     const unknown = o.matching && o.matching.find(i => !i.matched);
     const btn = (action, label, extra) => ` <button class="link" data-action="${action}" data-id="${esc(o.id)}"${extra || ''}>${label}</button>`;
     let actions = '';
+    if (['待人工确认', '异常待审核'].includes(o.status)) actions += btn('edit', '编辑');
     if (o.status === '待人工确认') actions += btn('approve', '确认');
     if (o.status === '异常待审核' && unknown) actions += btn('resolve', '处理异常', ` data-item="${esc(unknown.name)}"`);
     if (o.status === '已确认待速达开单') actions += btn('speeda', '登记' + esc(disp('速达')) + '单号');
     if (o.status === '已登记速达单号' && !o.pickStatus) actions += btn('pick', '生成拣货');
-    if (o.pickStatus) actions += ' <small>已生成拣货</small>';
+    if (o.pickStatus) actions += ' <small>已生成拣货</small>' + btn('printpick', '打印拣货单');
     if (o.status === '已登记速达单号') {
       const cur = esc(o.deliveryStatus || '未安排');
       actions += ` <select class="status-select" data-role="delivery" data-id="${esc(o.id)}"><option value="">配送状态（${cur}）</option><option>待配送</option><option>配送中</option><option>已送达</option></select>`;
@@ -79,7 +95,8 @@ function renderOrders(id, orders) {
     if (!['已送达', '已取消'].includes(o.status) && o.deliveryStatus !== '已送达') actions += btn('cancel', '取消');
     const newCustomer = o.customerMatched === false ? ' <span class="tag gray">新客户</span>' : '';
     return `<div class="order"><b>${esc(o.customer)}</b>${newCustomer}<span>${esc(o.id)}<br>${esc(o.source)} · ${(o.items || []).length}项</span><strong>${money(o.amount)}</strong><span><span class="tag">${esc(disp(o.status))}</span>${actions}</span></div>`;
-  }).join('') || '<p class="muted">没有匹配的订单 / No orders found</p>';
+  }).join('') || '<p class="muted">没有匹配的订单 / No orders found</p>'
+    + (rows.length > shown.length ? `<p class="muted">已显示 ${shown.length} / ${rows.length} <button class="link" data-action="showall" data-target="${esc(id)}">显示全部</button></p>` : '');
 }
 
 // ---------- 数据加载 ----------
@@ -104,7 +121,7 @@ async function load(silent) {
     $('vehicleList').innerHTML = state.vehicles.map(v =>
       `<div class="vehicle"><b>${esc(v.name)}</b><p>载重 ${esc(v.capacity)}　路线：${esc(v.route)}</p><span class="tag">${esc(v.load)}</span> <button class="link" data-action="dispatch" data-vehicle="${esc(v.name)}">人工安排</button></div>`).join('');
     $('auditList').innerHTML = (state.audit || []).slice(0, 12).map(a2 =>
-      `<div class="audit"><b>${esc(a2.action)}</b><span>${esc(a2.detail)}</span><small>${new Date(a2.time).toLocaleString()}</small></div>`).join('');
+      `<div class="audit"><b>${esc(a2.action)}</b><span>${esc(a2.detail)}</span><small>${esc(a2.operator || '')}${a2.operator ? ' · ' : ''}${new Date(a2.time).toLocaleString()}</small></div>`).join('');
     route();
   } catch (e) {
     console.error(e);
@@ -129,18 +146,66 @@ function closeImport() { const dialog = $('import'); if (dialog.open) dialog.clo
 async function submitOrder() {
   try {
     const f = $('file').files[0];
-    let content = $('items').value, filename = $('source').value;
-    if (f) { content = await f.text(); filename = f.name; }
-    const x = await api(f ? '/api/import' : '/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ customer: $('customer').value, source: $('source').value, amount: $('amount').value, items: content.split('\n').filter(Boolean), content, filename }),
-    });
+    const base = { customer: $('customer').value, source: $('source').value, amount: $('amount').value };
+    let url, payload;
+    if (f && /\.xlsx$/i.test(f.name)) {
+      // Excel：转 base64 交给服务端解析第一个工作表
+      const bytes = new Uint8Array(await f.arrayBuffer());
+      let bin = '';
+      for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      url = '/api/import';
+      payload = { ...base, filename: f.name, contentBase64: btoa(bin) };
+    } else if (f) {
+      const content = await f.text();
+      url = '/api/import';
+      payload = { ...base, content, filename: f.name };
+    } else {
+      url = '/api/orders';
+      payload = { ...base, items: $('items').value.split('\n').filter(Boolean) };
+    }
+    const x = await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     closeImport();
     await load(true);
     show('orders');
     alert(`已登记 ${x.id}，等待人工确认。`);
   } catch (e) { alert(e.message); }
+}
+
+// ---------- 订单编辑弹窗（确认前可改） ----------
+function openEdit(id) {
+  const o = (state.orders || []).find(x => x.id === id);
+  if (!o) return;
+  $('editId').value = o.id;
+  $('editCustomer').value = o.customer;
+  $('editAmount').value = o.amount ?? '';
+  $('editItems').value = (o.items || []).map(i => [i.name, i.qty, i.unit || '件'].join(',')).join('\n');
+  $('edit').showModal();
+}
+async function submitEdit(e) {
+  e.preventDefault();
+  try {
+    await api('/api/orders/' + encodeURIComponent($('editId').value) + '/edit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer: $('editCustomer').value, amount: $('editAmount').value, items: $('editItems').value.split('\n').map(v => v.trim()).filter(Boolean) }),
+    });
+    $('edit').close();
+    await load(true);
+  } catch (err) { alert(err.message); }
+}
+
+// ---------- 拣货单打印 ----------
+function printPick(id) {
+  const o = (state.orders || []).find(x => x.id === id);
+  if (!o) return;
+  const lines = (o.pickPlan || o.matching || o.items || []).map(i =>
+    `<tr><td>${esc(i.sku || '')}</td><td>${esc(i.name)}</td><td>${esc(i.requested ?? i.qty ?? '')}</td><td>${esc(i.unit || '')}</td><td></td></tr>`).join('');
+  $('printArea').innerHTML =
+    `<h2>${esc(config ? config.app.short : '')} · 拣货单</h2>` +
+    `<p>订单：${esc(o.id)}　客户：${esc(o.customer)}<br>打印时间：${new Date().toLocaleString()}</p>` +
+    `<table><thead><tr><th>SKU</th><th>商品</th><th>数量</th><th>单位</th><th>勾选</th></tr></thead><tbody>${lines}</tbody></table>` +
+    `<p class="sign">拣货人签字：＿＿＿＿＿＿　　复核签字：＿＿＿＿＿＿</p>`;
+  window.print();
 }
 
 // ---------- 库存调整弹窗 ----------
@@ -167,8 +232,11 @@ async function submitAdjust(e) {
 
 // ---------- 事件绑定（委托，替代拼接 onclick） ----------
 async function onAction(b) {
-  const { action, id, item, sku, name, vehicle } = b.dataset;
+  const { action, id, item, sku, name, vehicle, target } = b.dataset;
   try {
+    if (action === 'edit') { openEdit(id); return; }
+    if (action === 'printpick') { printPick(id); return; }
+    if (action === 'showall') { pageLimit[target] = Infinity; load(true); return; }
     if (action === 'approve') {
       if (!confirm('确认已人工核对客户、商品、数量和价格？')) return;
       await api('/api/orders/' + encodeURIComponent(id) + '/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -221,6 +289,17 @@ function bindEvents() {
   const ad = $('adjust');
   ad.addEventListener('click', e => { if (e.target === ad) ad.close(); });
   $('adjustForm').addEventListener('submit', submitAdjust);
+  const ed = $('edit');
+  ed.addEventListener('click', e => { if (e.target === ed) ed.close(); });
+  $('editForm').addEventListener('submit', submitEdit);
+  $('statusFilter').addEventListener('change', e => {
+    statusFilter = e.target.value;
+    renderOrders('ordersList', state.orders.slice(0, 4), false);
+    renderOrders('allOrders', state.orders);
+  });
+  const op = $('operatorName');
+  op.value = localStorage.getItem('ops_operator') || '';
+  op.addEventListener('change', () => { localStorage.setItem('ops_operator', op.value.trim()); });
   $('btnRefresh').addEventListener('click', () => load(true));
 }
 

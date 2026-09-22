@@ -14,6 +14,8 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { readXlsx, writeXlsx } = require('./lib/xlsx');
 
 const root = __dirname;
 const pkg = require('./package.json');
@@ -23,6 +25,8 @@ const DATA_FILE = process.env.DATA_FILE || path.join(root, 'data', 'demo.json');
 const CONFIG_FILE = process.env.CONFIG_FILE || path.join(root, 'config', 'merchant.json');
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT) || 3088;
+// 可选访问口令：设置后所有页面与接口（除 /login、/api/health）都需要登录
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
 
 // ---------------------------------------------------------------------------
 // 商家配置：默认值 + config/merchant.json 覆盖（允许只写部分字段）
@@ -103,7 +107,26 @@ function read() {
   return structuredClone(parsed);
 }
 
+// 每日自动备份：每天第一次写入前，把当前数据文件快照到 backups/，保留最近 14 份
+let lastBackupDay = '';
+function backupDaily() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (lastBackupDay === today || !fs.existsSync(DATA_FILE)) return;
+  try {
+    const dir = path.join(path.dirname(DATA_FILE), 'backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const base = path.basename(DATA_FILE).replace(/\.json$/i, '');
+    fs.copyFileSync(DATA_FILE, path.join(dir, base + '-' + today.replaceAll('-', '') + '.json'));
+    const files = fs.readdirSync(dir).filter(f => f.startsWith(base + '-') && f.endsWith('.json')).sort().reverse();
+    for (const f of files.slice(14)) fs.unlinkSync(path.join(dir, f));
+    lastBackupDay = today;
+  } catch (e) {
+    console.warn('[backup] 每日备份失败（不影响主流程）：' + e.message);
+  }
+}
+
 function save(d) {
+  backupDaily();
   d.appMeta = Object.assign({}, d.appMeta, { version: APP_VERSION });
   const tmp = DATA_FILE + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(d, null, 2) + '\n');
@@ -121,17 +144,61 @@ function newId(prefix) {
   return prefix + '-' + Date.now().toString(36) + (seq++).toString(36) + '-' + Math.random().toString(36).slice(2, 6);
 }
 
-function audit(d, action, detail) {
+function audit(d, action, detail, operator) {
   d.audit = d.audit || [];
-  d.audit.unshift({ id: Date.now() + seq, time: new Date().toISOString(), action, detail });
+  const item = { id: Date.now() + seq, time: new Date().toISOString(), action, detail };
+  if (operator) item.operator = operator; // 操作员标识（前端填写，仅作记录）
+  d.audit.unshift(item);
   d.audit = d.audit.slice(0, 500); // 防止审计日志无限膨胀
 }
 
-function send(res, status, body, type) {
+// 操作员标识：前端通过 X-Operator 头携带（HTTP 头仅支持 ASCII，故传输前经 URI 编码，≤20 字符）
+function opOf(req) {
+  let v = String(req.headers['x-operator'] || '').trim();
+  if (!v) return '';
+  try { v = decodeURIComponent(v); } catch { /* 保留原值 */ }
+  return v.slice(0, 20);
+}
+
+function send(res, status, body, type, extraHeaders) {
   if (res.headersSent) { res.end(); return; }
-  res.writeHead(status, { 'Content-Type': type || 'application/json; charset=utf-8' });
+  res.writeHead(status, Object.assign({ 'Content-Type': type || 'application/json; charset=utf-8' }, extraHeaders || {}));
   if (Buffer.isBuffer(body)) return res.end(body);
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
+}
+
+// ---------- 访问口令（可选，适配局域网多人部署） ----------
+// Cookie 存的是"HMAC(进程随机密钥, ACCESS_TOKEN)"而非口令本身；
+// 登出时轮换密钥，所有已发会话立即失效，服务重启也会使全部会话失效。
+let sessionSecret = crypto.randomUUID();
+
+function sessionSig() {
+  return crypto.createHmac('sha256', sessionSecret).update(ACCESS_TOKEN).digest('base64url');
+}
+
+function safeEqual(a, b) {
+  const ab = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
+
+function hasToken(req) {
+  const m = /(?:^|;\s*)ops_token=([^;]+)/.exec(req.headers.cookie || '');
+  return !!m && safeEqual(decodeURIComponent(m[1]), sessionSig());
+}
+
+function tokenOk(req) {
+  return !ACCESS_TOKEN || hasToken(req);
+}
+
+function loginPage(msg) {
+  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>登录</title></head>' +
+    '<body style="font-family:system-ui;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f5f7f9">' +
+    '<form onsubmit="fetch(\'/login\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({token:document.getElementById(\'t\').value})}).then(r=>{if(r.ok)location.href=\'/\';else document.getElementById(\'m\').textContent=\'口令错误，请重试\'})" ' +
+    'style="background:#fff;padding:40px;border-radius:14px;box-shadow:0 10px 40px #0002;width:320px">' +
+    '<h2 style="margin:0 0 8px">经营助手</h2><p style="color:#71817d;margin:0 0 16px">请输入访问口令</p>' +
+    '<input id="t" type="password" autofocus style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #d5e0da;border-radius:7px;margin-bottom:14px">' +
+    '<button style="width:100%;padding:12px;border:0;border-radius:8px;background:#d0f878;font-weight:700;cursor:pointer">进入</button>' +
+    '<p id="m" style="color:#c05621;margin:12px 0 0;min-height:1em">' + (msg || '') + '</p></form></body></html>';
 }
 
 // POST 只接受 JSON；带请求体的 POST 必须声明 application/json（顺带挡掉表单型 CSRF）
@@ -139,7 +206,7 @@ function body(req, done) {
   let b = '';
   req.on('data', c => {
     b += c;
-    if (b.length > 2 * 1024 * 1024) { send(req.res, 413, { error: '请求内容超过2 MB限制' }); req.destroy(); }
+    if (b.length > 8 * 1024 * 1024) { send(req.res, 413, { error: '请求内容超过8 MB限制' }); req.destroy(); }
   });
   req.on('end', () => {
     let x;
@@ -266,6 +333,31 @@ const server = http.createServer((req, res) => {
 function route(req, res) {
   req.res = res;
   const u = new URL(req.url, 'http://localhost');
+
+  // ---- 访问口令门禁（设置 ACCESS_TOKEN 环境变量时启用） --------------------
+  if (ACCESS_TOKEN) {
+    const open = u.pathname === '/login' || u.pathname === '/logout' || u.pathname === '/api/health';
+    if (!open && !hasToken(req)) {
+      if (req.method === 'GET' && !u.pathname.startsWith('/api/')) {
+        return send(res, 302, '', 'text/plain', { Location: '/login' });
+      }
+      return send(res, 401, { error: '请先登录' });
+    }
+  }
+  if (req.method === 'GET' && u.pathname === '/login') return send(res, 200, loginPage(), 'text/html; charset=utf-8');
+  if (req.method === 'POST' && u.pathname === '/login') {
+    return body(req, x => {
+      if (!safeEqual(String(x.token || ''), ACCESS_TOKEN)) return send(res, 401, { error: '口令错误' });
+      send(res, 200, { ok: true }, 'application/json; charset=utf-8', {
+        'Set-Cookie': 'ops_token=' + encodeURIComponent(sessionSig()) + '; Path=/; HttpOnly; SameSite=Strict',
+      });
+    });
+  }
+  if (req.method === 'GET' && u.pathname === '/logout') {
+    sessionSecret = crypto.randomUUID(); // 轮换签名密钥：所有已发会话立即失效
+    return send(res, 302, '', 'text/plain', { Location: '/login', 'Set-Cookie': 'ops_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' });
+  }
+
   let d;
 
   // ---- 配置与健康检查 -----------------------------------------------------
@@ -276,7 +368,8 @@ function route(req, res) {
         version: APP_VERSION,
         dataFile: path.basename(DATA_FILE),
         configFile: path.basename(CONFIG_FILE),
-        host: HOST, port: PORT,
+        host: HOST,
+        port: server.address() ? server.address().port : PORT,
       },
     });
   }
@@ -312,11 +405,25 @@ function route(req, res) {
     // 数据备份：原样下载当前数据文件
     const raw = fs.readFileSync(DATA_FILE);
     const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    res.writeHead(200, {
-      'Content-Type': 'application/json; charset=utf-8',
+    return send(res, 200, raw, 'application/json; charset=utf-8', {
       'Content-Disposition': 'attachment; filename="backup-' + stamp + '.json"',
     });
-    return res.end(raw);
+  }
+  if (req.method === 'GET' && u.pathname === '/api/export/orders.xlsx') {
+    // 订单对账导出：?month=YYYY-MM 可选，默认全部订单
+    d = read();
+    const month = u.searchParams.get('month');
+    const rows = [['订单号', '创建时间', '客户', '来源', '状态', '金额', '速达单号', '配送状态', '商品明细', '取消原因']];
+    for (const o of d.orders) {
+      if (month && String(o.createdAt || '').slice(0, 7) !== month) continue;
+      const items = (o.matching || o.items || []).map(i => `${i.name}×${i.qty}${i.unit || ''}`).join('；');
+      rows.push([o.id, String(o.createdAt || '').replace('T', ' ').slice(0, 16), o.customer, o.source, o.status, String(o.amount ?? ''), o.speedaNo || '', o.deliveryStatus || '未安排', items, o.cancelReason || '']);
+    }
+    const xlsx = writeXlsx([{ name: '订单', rows }]);
+    const fname = month ? 'orders-' + month + '.xlsx' : 'orders-all.xlsx';
+    return send(res, 200, xlsx, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', {
+      'Content-Disposition': 'attachment; filename="' + fname + '"',
+    });
   }
 
   // ---- 写操作：同源校验 ---------------------------------------------------
@@ -343,19 +450,33 @@ function route(req, res) {
       };
       enrich(d, order);
       d.orders.unshift(order);
-      audit(d, '新增订单', order.id + ' ' + order.customer);
+      audit(d, '新增订单', order.id + ' ' + order.customer, opOf(req));
       save(d);
       send(res, 201, order);
     });
   }
 
-  // ---- 导入订单 -----------------------------------------------------------
+  // ---- 导入订单（CSV/TXT 文本 或 .xlsx 第一个工作表） ----------------------
   if (req.method === 'POST' && u.pathname === '/api/import') {
     return body(req, x => {
-      if (!String(x.customer || '').trim() || !String(x.content || '').trim()) return send(res, 400, { error: '客户和文件内容必填' });
-      const lines = String(x.content).split(/\r?\n/).map(v => v.trim()).filter(Boolean);
-      const rows = /^(商品|品名|名称)/i.test(lines[0]) ? lines.slice(1) : lines;
-      const items = rows.map(parseItemLine);
+      if (!String(x.customer || '').trim()) return send(res, 400, { error: '客户必填' });
+      let items;
+      if (x.contentBase64 && /\.xlsx$/i.test(String(x.filename || ''))) {
+        let parsed;
+        try {
+          parsed = readXlsx(Buffer.from(String(x.contentBase64), 'base64'));
+        } catch (e) {
+          return send(res, 400, { error: '无法解析 xlsx 文件：' + e.message });
+        }
+        const rows = parsed.rows.filter(r => (r || []).some(c => String(c ?? '').trim()));
+        const body = rows.length && /^(商品|品名|名称)/.test(String(rows[0][0] || '').trim()) ? rows.slice(1) : rows;
+        items = body.map(r => ({ name: String(r[0] ?? '').trim(), qty: Number(r[1]) > 0 ? Number(r[1]) : 1, unit: String(r[2] ?? '').trim() || '件' })).filter(i => i.name);
+      } else {
+        if (!String(x.content || '').trim()) return send(res, 400, { error: '客户和文件内容必填' });
+        const lines = String(x.content).split(/\r?\n/).map(v => v.trim()).filter(Boolean);
+        const rows = /^(商品|品名|名称)/i.test(lines[0]) ? lines.slice(1) : lines;
+        items = rows.map(parseItemLine);
+      }
       if (!validItems(items)) return send(res, 400, { error: '导入内容没有有效商品或数量' });
       d = read();
       const o = {
@@ -371,14 +492,14 @@ function route(req, res) {
       };
       enrich(d, o);
       d.orders.unshift(o);
-      audit(d, '导入订单', o.id + ' ' + o.source);
+      audit(d, '导入订单', o.id + ' ' + o.source, opOf(req));
       save(d);
       send(res, 201, o);
     });
   }
 
   // ---- 订单状态机 ---------------------------------------------------------
-  const match = u.pathname.match(/^\/api\/orders\/([^/]+)\/(approve|speeda|pick|resolve|cancel)$/);
+  const match = u.pathname.match(/^\/api\/orders\/([^/]+)\/(approve|speeda|pick|resolve|cancel|edit)$/);
   if (req.method === 'POST' && match) {
     return body(req, x => {
       d = read();
@@ -387,7 +508,22 @@ function route(req, res) {
       enrich(d, o);
       const act = match[2];
 
-      if (act === 'resolve') {
+      if (act === 'edit') {
+        // 确认前可修改：仅限"待人工确认 / 异常待审核"订单
+        if (!['待人工确认', '异常待审核'].includes(o.status)) return send(res, 409, { error: '只有未确认的订单才能修改；已确认订单请先取消后重新录入' });
+        if (x.customer !== undefined && !String(x.customer || '').trim()) return send(res, 400, { error: '客户不能为空' });
+        if (x.amount !== undefined && (Number.isNaN(Number(x.amount)) || Number(x.amount) < 0)) return send(res, 400, { error: '订单金额必须是非负数字' });
+        if (x.items !== undefined) {
+          if (!validItems(x.items)) return send(res, 400, { error: '商品明细无效，数量必须大于0' });
+          o.items = x.items.map(i => (typeof i === 'string' ? parseItemLine(i) : i));
+        }
+        if (String(x.customer || '').trim()) o.customer = x.customer.trim();
+        if (x.amount !== undefined) o.amount = Number(x.amount) || 0;
+        o.status = '待人工确认'; // 重新匹配商品与客户
+        enrich(d, o);
+        audit(d, '修改订单', o.id, opOf(req));
+
+      } else if (act === 'resolve') {
         // 只允许从"异常待审核"处理，防止把已确认订单打回
         if (o.status !== '异常待审核') return send(res, 409, { error: '只有异常待审核订单才能处理商品异常' });
         const item = o.items.find(i => i.name === x.itemName);
@@ -396,7 +532,7 @@ function route(req, res) {
         item.name = p.name; item.sku = p.sku;
         o.status = '待人工确认';
         enrich(d, o);
-        audit(d, '人工处理商品异常', o.id + ' ' + p.sku);
+        audit(d, '人工处理商品异常', o.id + ' ' + p.sku, opOf(req));
 
       } else if (act === 'cancel') {
         if (['已送达', '已取消'].includes(o.status) || o.deliveryStatus === '已送达') {
@@ -404,14 +540,14 @@ function route(req, res) {
         }
         o.status = '已取消';
         o.cancelReason = String(x.reason || '人工取消');
-        audit(d, '人工取消订单', o.id + ' ' + o.cancelReason);
+        audit(d, '人工取消订单', o.id + ' ' + o.cancelReason, opOf(req));
 
       } else if (act === 'approve') {
         if (o.exceptions && o.exceptions.length) return send(res, 409, { error: '存在未匹配商品，请先处理异常' });
         if (o.status !== '待人工确认') return send(res, 409, { error: '只有待人工确认订单才能确认' });
         o.status = '已确认待速达开单';
         o.confirmedAt = new Date().toISOString();
-        audit(d, '人工确认订单', o.id);
+        audit(d, '人工确认订单', o.id, opOf(req));
 
       } else if (act === 'pick') {
         if (o.status !== '已登记速达单号') return send(res, 409, { error: '请先完成速达单号登记' });
@@ -426,14 +562,14 @@ function route(req, res) {
         }
         o.pickPlan = plan;
         o.pickStatus = '已生成拣货任务';
-        audit(d, '生成拣货任务（已扣减库存）', o.id);
+        audit(d, '生成拣货任务（已扣减库存）', o.id, opOf(req));
 
       } else { // speeda：登记外部账本单号（已移除任何 force 旁路）
         if (o.status !== '已确认待速达开单') return send(res, 409, { error: '请先人工确认订单' });
         if (!String(x.speedaNo || '').trim()) return send(res, 400, { error: '请填写速达单号' });
         o.speedaNo = String(x.speedaNo).trim();
         o.status = '已登记速达单号';
-        audit(d, '登记速达单号', o.id + ' → ' + o.speedaNo);
+        audit(d, '登记速达单号', o.id + ' → ' + o.speedaNo, opOf(req));
       }
       save(d);
       send(res, 200, o);
@@ -454,7 +590,7 @@ function route(req, res) {
       if (x.type === 'in') inv.stock = before + qty;
       else if (x.type === 'out') inv.stock = Math.max(0, before - qty);
       else inv.stock = qty;
-      audit(d, '库存调整（' + types[x.type] + '）', inv.sku + ' ' + before + '→' + inv.stock + (x.reason ? ' ' + x.reason : ''));
+      audit(d, '库存调整（' + types[x.type] + '）', inv.sku + ' ' + before + '→' + inv.stock + (x.reason ? ' ' + x.reason : ''), opOf(req));
       save(d);
       send(res, 200, inv);
     });
@@ -469,7 +605,7 @@ function route(req, res) {
       if (!String(x.route || '').trim()) return send(res, 400, { error: '配送路线不能为空' });
       v.route = String(x.route).trim();
       v.load = x.load || '已安排';
-      audit(d, '人工安排配送', v.name + ' ' + v.route);
+      audit(d, '人工安排配送', v.name + ' ' + v.route, opOf(req));
       save(d);
       send(res, 200, v);
     });
@@ -484,7 +620,7 @@ function route(req, res) {
       const cur = RANK[o.deliveryStatus] ?? 0;
       if (RANK[x.status] < cur) return send(res, 409, { error: '配送状态只能前进，不能回退（当前：' + (o.deliveryStatus || '未安排') + '）' });
       o.deliveryStatus = x.status;
-      audit(d, '更新配送状态', o.id + ' → ' + x.status);
+      audit(d, '更新配送状态', o.id + ' → ' + x.status, opOf(req));
       save(d);
       send(res, 200, o);
     });
@@ -510,10 +646,13 @@ server.on('error', e => {
 });
 
 server.listen(PORT, HOST, () => {
+  const actual = server.address() ? server.address().port : PORT;
+  console.log('LISTENING_PORT=' + actual); // 机器可读：测试/脚本用 PORT=0 时从这行取实际端口
   const cfg = readConfig();
-  console.log('[' + cfg.app.name + '] v' + APP_VERSION + ' running at http://localhost:' + PORT);
+  console.log('[' + cfg.app.name + '] v' + APP_VERSION + ' running at http://localhost:' + actual);
   console.log('  数据文件：' + DATA_FILE);
   console.log('  商家配置：' + CONFIG_FILE);
-  if (HOST === '0.0.0.0') console.log('  已监听全部网卡（局域网可访问），请确认防火墙已放行 TCP ' + PORT);
+  if (HOST === '0.0.0.0') console.log('  已监听全部网卡（局域网可访问），请确认防火墙已放行 TCP ' + actual);
   else console.log('  当前仅本机可访问；局域网共享请用 HOST=0.0.0.0 启动');
+  if (ACCESS_TOKEN) console.log('  已启用访问口令：打开页面需先登录（/login）');
 });

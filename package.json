@@ -1,13 +1,13 @@
 {
   "name": "chen-sheng-local-business-assistant",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "晨升膳食与高埗盈泰本地经营智能助手（多商家适配版）",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check public/app.js",
+    "check": "node --check server.js && node --check lib/xlsx.js && node --check public/app.js",
     "init": "node scripts/init-merchant.js"
   },
   "engines": {
