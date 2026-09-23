@@ -626,6 +626,158 @@ function route(req, res) {
     });
   }
 
+  // ---- 主数据管理：商品 / 客户 / 车辆（新商家上线在这里补齐数据） ----------
+  // 别名字段接受数组或"逗号/顿号/空格"分隔字符串
+  const aliasList = v => Array.isArray(v)
+    ? v.map(s => String(s).trim()).filter(Boolean)
+    : (typeof v === 'string' ? v.split(/[,，、\s]+/).map(s => s.trim()).filter(Boolean) : undefined);
+  const num0 = v => (v === undefined || v === '' || v === null) ? null : (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : NaN);
+
+  if (req.method === 'POST' && u.pathname === '/api/products/add') {
+    return body(req, x => {
+      const sku = String(x.sku || '').trim(), name = String(x.name || '').trim();
+      if (!sku || !name) return send(res, 400, { error: 'SKU 和商品名称必填' });
+      d = read();
+      if (d.products.some(p => p.sku === sku)) return send(res, 409, { error: 'SKU ' + sku + ' 已存在' });
+      const prod = { sku, name, aliases: aliasList(x.aliases) || [] };
+      d.products.unshift(prod);
+      const stock = num0(x.stock), safe = num0(x.safe), cost = num0(x.cost);
+      if ([stock, safe, cost].some(v => Number.isNaN(v))) return send(res, 400, { error: '库存/安全库存/成本必须是非负数字' });
+      if (stock !== null || safe !== null || cost !== null || String(x.unit || '').trim()) {
+        const inv = d.inventory.find(v => v.sku === sku);
+        if (!inv) d.inventory.push({ sku, name, stock: stock ?? 0, safe: safe ?? 0, unit: String(x.unit || '件').trim() || '件', cost: cost ?? 0 });
+        else Object.assign(inv, { name, stock: stock ?? inv.stock, safe: safe ?? inv.safe, cost: cost ?? inv.cost, unit: String(x.unit || inv.unit || '件').trim() || '件' });
+      }
+      audit(d, '新增商品', sku + ' ' + name, opOf(req));
+      save(d);
+      send(res, 201, prod);
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/products/update') {
+    return body(req, x => {
+      const sku = String(x.sku || '').trim();
+      d = read();
+      const prod = d.products.find(p => p.sku === sku);
+      if (!prod) return send(res, 404, { error: '商品不存在' });
+      const name = String(x.name || '').trim();
+      if (name) prod.name = name;
+      const aliases = aliasList(x.aliases);
+      if (aliases !== undefined) prod.aliases = aliases;
+      const stock = num0(x.stock), safe = num0(x.safe), cost = num0(x.cost);
+      if ([stock, safe, cost].some(v => Number.isNaN(v))) return send(res, 400, { error: '库存/安全库存/成本必须是非负数字' });
+      if (stock !== null || safe !== null || cost !== null || String(x.unit || '').trim()) {
+        let inv = d.inventory.find(v => v.sku === sku);
+        if (!inv) d.inventory.push(inv = { sku, name: prod.name, stock: 0, safe: 0, unit: '件', cost: 0 });
+        if (stock !== null) inv.stock = stock;
+        if (safe !== null) inv.safe = safe;
+        if (cost !== null) inv.cost = cost;
+        if (String(x.unit || '').trim()) inv.unit = String(x.unit).trim();
+        inv.name = prod.name;
+      }
+      audit(d, '修改商品', sku, opOf(req));
+      save(d);
+      send(res, 200, prod);
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/products/delete') {
+    return body(req, x => {
+      const sku = String(x.sku || '').trim();
+      d = read();
+      const i = d.products.findIndex(p => p.sku === sku);
+      if (i < 0) return send(res, 404, { error: '商品不存在' });
+      const invIndex = d.inventory.findIndex(v => v.sku === sku);
+      if (invIndex >= 0 && !x.cascade) return send(res, 409, { error: '该商品存在库存条目，需级联删除库存', needCascade: true });
+      d.products.splice(i, 1);
+      if (invIndex >= 0) d.inventory.splice(invIndex, 1);
+      audit(d, '删除商品', sku + (invIndex >= 0 ? '（含库存条目）' : ''), opOf(req));
+      save(d);
+      send(res, 200, { ok: true });
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/customers/add') {
+    return body(req, x => {
+      const name = String(x.name || '').trim();
+      if (!name) return send(res, 400, { error: '客户名称必填' });
+      d = read();
+      if (d.customers.some(c => c.name === name || (c.aliases || []).includes(name))) return send(res, 409, { error: '客户或别名已存在：' + name });
+      const cust = { id: 'C' + String(d.customers.length + 1).padStart(3, '0'), name, aliases: aliasList(x.aliases) || [] };
+      d.customers.push(cust);
+      audit(d, '新增客户', name, opOf(req));
+      save(d);
+      send(res, 201, cust);
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/customers/update') {
+    return body(req, x => {
+      const key = String(x.id || x.name || '').trim();
+      d = read();
+      const cust = d.customers.find(c => c.id === key || c.name === key);
+      if (!cust) return send(res, 404, { error: '客户不存在' });
+      const newName = String(x.newName || '').trim();
+      if (newName && d.customers.some(c => c !== cust && (c.name === newName || (c.aliases || []).includes(newName)))) return send(res, 409, { error: '客户或别名已存在：' + newName });
+      if (newName) cust.name = newName;
+      const aliases = aliasList(x.aliases);
+      if (aliases !== undefined) cust.aliases = aliases;
+      audit(d, '修改客户', cust.name, opOf(req));
+      save(d);
+      send(res, 200, cust);
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/customers/delete') {
+    return body(req, x => {
+      const key = String(x.id || x.name || '').trim();
+      d = read();
+      const i = d.customers.findIndex(c => c.id === key || c.name === key);
+      if (i < 0) return send(res, 404, { error: '客户不存在' });
+      const [removed] = d.customers.splice(i, 1);
+      audit(d, '删除客户', removed.name, opOf(req));
+      save(d);
+      send(res, 200, { ok: true });
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/vehicles/add') {
+    return body(req, x => {
+      const name = String(x.name || '').trim();
+      if (!name) return send(res, 400, { error: '车辆名称必填' });
+      d = read();
+      if (d.vehicles.some(v => v.name === name)) return send(res, 409, { error: '车辆已存在：' + name });
+      const v = { name, capacity: String(x.capacity || '').trim() || '—', route: String(x.route || '').trim(), load: '待安排' };
+      d.vehicles.push(v);
+      audit(d, '新增车辆', name, opOf(req));
+      save(d);
+      send(res, 201, v);
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/vehicles/update') {
+    return body(req, x => {
+      const key = String(x.name || '').trim();
+      d = read();
+      const v = d.vehicles.find(v => v.name === key);
+      if (!v) return send(res, 404, { error: '车辆不存在' });
+      const newName = String(x.newName || '').trim();
+      if (newName && d.vehicles.some(o => o !== v && o.name === newName)) return send(res, 409, { error: '车辆已存在：' + newName });
+      if (newName) v.name = newName;
+      if (String(x.capacity || '').trim()) v.capacity = String(x.capacity).trim();
+      if (String(x.route || '').trim()) v.route = String(x.route).trim();
+      if (String(x.load || '').trim()) v.load = String(x.load).trim();
+      audit(d, '修改车辆', v.name, opOf(req));
+      save(d);
+      send(res, 200, v);
+    });
+  }
+  if (req.method === 'POST' && u.pathname === '/api/vehicles/delete') {
+    return body(req, x => {
+      const key = String(x.name || '').trim();
+      d = read();
+      const i = d.vehicles.findIndex(v => v.name === key);
+      if (i < 0) return send(res, 404, { error: '车辆不存在' });
+      const [removed] = d.vehicles.splice(i, 1);
+      audit(d, '删除车辆', removed.name, opOf(req));
+      save(d);
+      send(res, 200, { ok: true });
+    });
+  }
+
   // ---- 静态文件 -----------------------------------------------------------
   const file = u.pathname === '/' ? '/index.html' : u.pathname;
   const p = path.normalize(path.join(pubDir, file));

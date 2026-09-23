@@ -395,3 +395,79 @@ test('lib/xlsx 读写回环：中文与特殊字符不丢失', () => {
   assert.deepEqual(parsed.rows[1], ['大米', '5']);
   assert.equal(parsed.rows[2][0], 'A"B\'C'); // 行尾空单元格在表格语义下自然丢弃
 });
+
+// ---------------------------------------------------------------------------
+// v0.9.0：基础数据管理（商品 / 客户 / 车辆）
+// ---------------------------------------------------------------------------
+test('商品主数据：新增后别名即可自动匹配订单，重复 SKU 拒绝', async () => {
+  await withServer({}, async p => {
+    const add = await request(p, '/api/products/add', 'POST', { sku: 'CHK-1', name: '冻鸡腿 1kg', aliases: '鸡腿,鸡全腿', stock: 30, safe: 20, cost: 15, unit: '包' });
+    assert.equal(add.status, 201);
+    const dup = await request(p, '/api/products/add', 'POST', { sku: 'CHK-1', name: '重复' });
+    assert.equal(dup.status, 409);
+    // 别名立刻生效：新订单可直接匹配
+    const o = await request(p, '/api/orders', 'POST', { customer: '测试食堂', items: ['鸡腿,2,包'] });
+    assert.equal(o.body.status, '待人工确认');
+    assert.equal(o.body.matching[0].sku, 'CHK-1');
+    assert.equal(o.body.matching[0].matched, true);
+    // 库存条目同步创建，可正常拣货扣减
+    const id = await flowToSpeeda(p, ['鸡腿,2,包'], 60);
+    const pick = await request(p, '/api/orders/' + id + '/pick', 'POST', {});
+    assert.equal(pick.status, 200);
+    const inv = (await request(p, '/api/overview')).body.inventory.find(v => v.sku === 'CHK-1');
+    assert.equal(inv.stock, 28);
+  });
+});
+
+test('商品主数据：更新与级联删除', async () => {
+  await withServer({}, async p => {
+    await request(p, '/api/products/add', 'POST', { sku: 'MILK-1', name: '纯牛奶 250ml', aliases: ['牛奶'], stock: 10, safe: 5 });
+    const upd = await request(p, '/api/products/update', 'POST', { sku: 'MILK-1', name: '纯牛奶 250ml×24', aliases: '牛奶,纯牛奶', safe: 8 });
+    assert.equal(upd.status, 200);
+    assert.deepEqual(upd.body.aliases, ['牛奶', '纯牛奶']);
+    // 存在库存条目：默认拒绝删除，级联后才删
+    const blocked = await request(p, '/api/products/delete', 'POST', { sku: 'MILK-1' });
+    assert.equal(blocked.status, 409);
+    assert.equal(blocked.body.needCascade, true);
+    const cascade = await request(p, '/api/products/delete', 'POST', { sku: 'MILK-1', cascade: true });
+    assert.equal(cascade.status, 200);
+    const ov = (await request(p, '/api/overview')).body;
+    assert.ok(!ov.products.some(x => x.sku === 'MILK-1'));
+    assert.ok(!ov.inventory.some(x => x.sku === 'MILK-1'));
+  });
+});
+
+test('客户主数据：新增/别名更新/删除后订单标记新客户', async () => {
+  await withServer({}, async p => {
+    const add = await request(p, '/api/customers/add', 'POST', { name: '新城小学食堂', aliases: '新城小学' });
+    assert.equal(add.status, 201);
+    assert.ok(add.body.id);
+    let o = await request(p, '/api/orders', 'POST', { customer: '新城小学', items: ['大米'] });
+    assert.equal(o.body.customerMatched, true);
+    const dup = await request(p, '/api/customers/add', 'POST', { name: '新城小学' });
+    assert.equal(dup.status, 409);
+    const upd = await request(p, '/api/customers/update', 'POST', { id: add.body.id, aliases: '新城小学,新小食堂' });
+    assert.equal(upd.status, 200);
+    const del = await request(p, '/api/customers/delete', 'POST', { id: add.body.id });
+    assert.equal(del.status, 200);
+    o = await request(p, '/api/orders', 'POST', { customer: '新城小学', items: ['大米'] });
+    assert.equal(o.body.customerMatched, false);
+  });
+});
+
+test('车辆主数据：新增后可参与配送调度，可改名与删除', async () => {
+  await withServer({}, async p => {
+    const add = await request(p, '/api/vehicles/add', 'POST', { name: '粤S·C9999 三轮车', capacity: '0.3吨' });
+    assert.equal(add.status, 201);
+    const dup = await request(p, '/api/vehicles/add', 'POST', { name: '粤S·C9999 三轮车' });
+    assert.equal(dup.status, 409);
+    const dispatch = await request(p, '/api/dispatch', 'POST', { vehicle: '粤S·C9999 三轮车', route: '城区线' });
+    assert.equal(dispatch.status, 200);
+    const upd = await request(p, '/api/vehicles/update', 'POST', { name: '粤S·C9999 三轮车', newName: '粤S·C8888 三轮车' });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.body.name, '粤S·C8888 三轮车');
+    const del = await request(p, '/api/vehicles/delete', 'POST', { name: '粤S·C8888 三轮车' });
+    assert.equal(del.status, 200);
+    assert.equal((await request(p, '/api/vehicles/delete', 'POST', { name: '粤S·C8888 三轮车' })).status, 404);
+  });
+});

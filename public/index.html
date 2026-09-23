@@ -22,6 +22,7 @@
       <a href="#orders">订单中心</a>
       <a href="#warehouse">库存与拣货</a>
       <a href="#delivery">配送调度</a>
+      <a href="#master">基础数据</a>
       <a href="#analysis">经营分析</a>
       <a href="#settings">系统与账本</a>
     </nav>
@@ -92,6 +93,33 @@
         <h2>配送调度</h2>
         <p class="muted">车辆路线支持人工调整；配送状态只能前进（未安排 → 待配送 → 配送中 → 已送达），不能回退。</p>
         <div id="vehicleList"></div>
+      </div>
+    </section>
+
+    <!-- 基础数据 -->
+    <section id="master" class="page hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>商品主数据</h2>
+          <button class="primary small" data-action="editProduct">＋ 添加商品</button>
+        </div>
+        <p class="muted">别名用于订单自动匹配；成本/安全库存用于毛利估算与补货建议。删除带库存条目的商品需级联确认。</p>
+        <div id="productList"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>客户主数据</h2>
+          <button class="primary small" data-action="editCustomer">＋ 添加客户</button>
+        </div>
+        <p class="muted">客户别名匹配后订单不再标"新客户"，统计口径也更准。</p>
+        <div id="customerList"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>配送车辆</h2>
+          <button class="primary small" data-action="editVehicle">＋ 添加车辆</button>
+        </div>
+        <div id="vehicleMasterList"></div>
       </div>
     </section>
 
@@ -194,6 +222,56 @@
         <div class="actions">
           <button class="secondary" type="button" data-close>取消</button>
           <button class="primary" type="submit">保存修改</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 商品主数据弹窗 -->
+    <dialog id="dlgProduct">
+      <form id="dlgProductForm">
+        <h2 id="dlgProductTitle">添加商品</h2>
+        <input type="hidden" id="pdMode" value="add">
+        <label>SKU<input id="pdSku" required placeholder="如 RICE-25"></label>
+        <label>商品名称<input id="pdName" required placeholder="如 东北大米 25kg"></label>
+        <label>别名（逗号分隔，订单自动匹配用）<input id="pdAliases" placeholder="如 大米,东北米"></label>
+        <label>单位<input id="pdUnit" placeholder="件"></label>
+        <label>成本价<input id="pdCost" type="number" min="0" step="0.01" placeholder="0"></label>
+        <label>安全库存<input id="pdSafe" type="number" min="0" step="1" placeholder="0"></label>
+        <label>当前库存<input id="pdStock" type="number" min="0" step="1" placeholder="0"></label>
+        <div class="actions">
+          <button class="secondary" type="button" data-close>取消</button>
+          <button class="primary" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 客户主数据弹窗 -->
+    <dialog id="dlgCustomer">
+      <form id="dlgCustomerForm">
+        <h2 id="dlgCustomerTitle">添加客户</h2>
+        <input type="hidden" id="cdMode" value="add">
+        <input type="hidden" id="cdKey">
+        <label>客户名称<input id="cdName" required></label>
+        <label>别名（逗号分隔）<input id="cdAliases"></label>
+        <div class="actions">
+          <button class="secondary" type="button" data-close>取消</button>
+          <button class="primary" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 车辆主数据弹窗 -->
+    <dialog id="dlgVehicle">
+      <form id="dlgVehicleForm">
+        <h2 id="dlgVehicleTitle">添加车辆</h2>
+        <input type="hidden" id="vdMode" value="add">
+        <input type="hidden" id="vdKey">
+        <label>车辆名称<input id="vdName" required placeholder="如 粤S·C1234 小货车"></label>
+        <label>载重<input id="vdCapacity" placeholder="如 1.5吨"></label>
+        <label>常用路线<input id="vdRoute" placeholder="如 高埗—石碣"></label>
+        <div class="actions">
+          <button class="secondary" type="button" data-close>取消</button>
+          <button class="primary" type="submit">保存</button>
         </div>
       </form>
     </dialog>

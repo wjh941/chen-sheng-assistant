@@ -88,6 +88,7 @@ function renderOrders(id, orders, applyFilter) {
     if (o.status === '已确认待速达开单') actions += btn('speeda', '登记' + esc(disp('速达')) + '单号');
     if (o.status === '已登记速达单号' && !o.pickStatus) actions += btn('pick', '生成拣货');
     if (o.pickStatus) actions += ' <small>已生成拣货</small>' + btn('printpick', '打印拣货单');
+    if (o.status === '已登记速达单号' && ['待配送', '配送中'].includes(o.deliveryStatus)) actions += btn('printdelivery', '打印送货单');
     if (o.status === '已登记速达单号') {
       const cur = esc(o.deliveryStatus || '未安排');
       actions += ` <select class="status-select" data-role="delivery" data-id="${esc(o.id)}"><option value="">配送状态（${cur}）</option><option>待配送</option><option>配送中</option><option>已送达</option></select>`;
@@ -122,6 +123,8 @@ async function load(silent) {
       `<div class="vehicle"><b>${esc(v.name)}</b><p>载重 ${esc(v.capacity)}　路线：${esc(v.route)}</p><span class="tag">${esc(v.load)}</span> <button class="link" data-action="dispatch" data-vehicle="${esc(v.name)}">人工安排</button></div>`).join('');
     $('auditList').innerHTML = (state.audit || []).slice(0, 12).map(a2 =>
       `<div class="audit"><b>${esc(a2.action)}</b><span>${esc(a2.detail)}</span><small>${esc(a2.operator || '')}${a2.operator ? ' · ' : ''}${new Date(a2.time).toLocaleString()}</small></div>`).join('');
+    renderMaster();
+    document.title = (a.pending > 0 ? `(${a.pending}) ` : '') + (config ? config.app.name : '本地经营助手');
     route();
   } catch (e) {
     console.error(e);
@@ -230,13 +233,164 @@ async function submitAdjust(e) {
   } catch (err) { alert(err.message); }
 }
 
+// ---------- 基础数据管理（商品 / 客户 / 车辆） ----------
+function renderMaster() {
+  if (!state) return;
+  const invBySku = {};
+  (state.inventory || []).forEach(v => { invBySku[v.sku] = v; });
+  $('productList').innerHTML = (state.products || []).map(p => {
+    const inv = invBySku[p.sku];
+    return `<div class="task"><b>${esc(p.name)}</b> <span class="tag">${esc(p.sku)}</span><p>别名：${esc((p.aliases || []).join('、') || '—')}　成本：${inv ? money(inv.cost) : '—'}　库存：${inv ? `${inv.stock}${esc(inv.unit)} / 安全 ${inv.safe}` : '未建库存'}</p><span><button class="link" data-action="editProduct" data-sku="${esc(p.sku)}">编辑</button> <button class="link" data-action="delProduct" data-sku="${esc(p.sku)}">删除</button></span></div>`;
+  }).join('') || '<p class="muted">还没有商品，点右上角"添加商品"开始建主数据</p>';
+  $('customerList').innerHTML = (state.customers || []).map(c =>
+    `<div class="task"><b>${esc(c.name)}</b><p>别名：${esc((c.aliases || []).join('、') || '—')}</p><span><button class="link" data-action="editCustomer" data-id="${esc(c.id || '')}" data-name="${esc(c.name)}">编辑</button> <button class="link" data-action="delCustomer" data-id="${esc(c.id || '')}" data-name="${esc(c.name)}">删除</button></span></div>`).join('') || '<p class="muted">还没有客户</p>';
+  $('vehicleMasterList').innerHTML = (state.vehicles || []).map(v =>
+    `<div class="task"><b>${esc(v.name)}</b><p>载重：${esc(v.capacity || '—')}　路线：${esc(v.route || '—')}</p><span><button class="link" data-action="editVehicle" data-name="${esc(v.name)}">编辑</button> <button class="link" data-action="delVehicle" data-name="${esc(v.name)}">删除</button></span></div>`).join('') || '<p class="muted">还没有车辆</p>';
+}
+
+function openProductDlg(p) {
+  $('dlgProductTitle').textContent = p ? '编辑商品' : '添加商品';
+  $('pdMode').value = p ? 'edit' : 'add';
+  $('pdSku').value = p ? p.sku : '';
+  $('pdSku').disabled = !!p;
+  $('pdName').value = p ? p.name : '';
+  $('pdAliases').value = p ? (p.aliases || []).join(',') : '';
+  const inv = p ? (state.inventory || []).find(v => v.sku === p.sku) : null;
+  $('pdUnit').value = inv ? inv.unit : '件';
+  $('pdCost').value = inv ? inv.cost : '';
+  $('pdSafe').value = inv ? inv.safe : '';
+  $('pdStock').value = inv ? inv.stock : '';
+  $('dlgProduct').showModal();
+}
+
+async function submitProduct(e) {
+  e.preventDefault();
+  try {
+    const mode = $('pdMode').value;
+    await api('/api/products/' + (mode === 'add' ? 'add' : 'update'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sku: $('pdSku').value, name: $('pdName').value, aliases: $('pdAliases').value,
+        unit: $('pdUnit').value, cost: $('pdCost').value, safe: $('pdSafe').value, stock: $('pdStock').value,
+      }),
+    });
+    $('dlgProduct').close();
+    await load(true);
+  } catch (err) { alert(err.message); }
+}
+
+function openCustomerDlg(c) {
+  $('dlgCustomerTitle').textContent = c ? '编辑客户' : '添加客户';
+  $('cdMode').value = c ? 'edit' : 'add';
+  $('cdKey').value = c ? (c.id || c.name) : '';
+  $('cdName').value = c ? c.name : '';
+  $('cdAliases').value = c ? (c.aliases || []).join(',') : '';
+  $('dlgCustomer').showModal();
+}
+
+async function submitCustomer(e) {
+  e.preventDefault();
+  try {
+    const mode = $('cdMode').value;
+    const payload = { name: $('cdName').value, aliases: $('cdAliases').value };
+    if (mode === 'edit') payload.id = $('cdKey').value;
+    await api('/api/customers/' + (mode === 'add' ? 'add' : 'update'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    $('dlgCustomer').close();
+    await load(true);
+  } catch (err) { alert(err.message); }
+}
+
+function openVehicleDlg(v) {
+  $('dlgVehicleTitle').textContent = v ? '编辑车辆' : '添加车辆';
+  $('vdMode').value = v ? 'edit' : 'add';
+  $('vdKey').value = v ? v.name : '';
+  $('vdName').value = v ? v.name : '';
+  $('vdCapacity').value = v ? (v.capacity || '') : '';
+  $('vdRoute').value = v ? (v.route || '') : '';
+  $('dlgVehicle').showModal();
+}
+
+async function submitVehicle(e) {
+  e.preventDefault();
+  try {
+    const mode = $('vdMode').value;
+    const body = { name: $('vdName').value, capacity: $('vdCapacity').value, route: $('vdRoute').value };
+    const url = mode === 'add' ? '/api/vehicles/add' : '/api/vehicles/update';
+    if (mode === 'edit') body.newName = body.name, body.name = $('vdKey').value;
+    await api(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    $('dlgVehicle').close();
+    await load(true);
+  } catch (err) { alert(err.message); }
+}
+
+// ---------- 送货单打印 ----------
+function printDelivery(id) {
+  const o = (state.orders || []).find(x => x.id === id);
+  if (!o) return;
+  const lines = (o.matching || o.items || []).map(i =>
+    `<tr><td>${esc(i.name)}</td><td>${esc(i.qty)}</td><td>${esc(i.unit || '')}</td></tr>`).join('');
+  const head = config ? (config.app.company || config.app.short) : '';
+  $('printArea').innerHTML =
+    `<h2>${esc(head)} · 送货单</h2>` +
+    `<p>客户：${esc(o.customer)}　订单：${esc(o.id)}${o.speedaNo ? '　账单号：' + esc(o.speedaNo) : ''}<br>打印时间：${new Date().toLocaleString()}</p>` +
+    `<table><thead><tr><th>商品</th><th>数量</th><th>单位</th></tr></thead><tbody>${lines}</tbody></table>` +
+    `<p>合计金额：${money(o.amount)}</p><p class="sign">收货人签字：＿＿＿＿＿＿　　送货人签字：＿＿＿＿＿＿</p>`;
+  window.print();
+}
+
 // ---------- 事件绑定（委托，替代拼接 onclick） ----------
 async function onAction(b) {
   const { action, id, item, sku, name, vehicle, target } = b.dataset;
   try {
     if (action === 'edit') { openEdit(id); return; }
     if (action === 'printpick') { printPick(id); return; }
+    if (action === 'printdelivery') { printDelivery(id); return; }
     if (action === 'showall') { pageLimit[target] = Infinity; load(true); return; }
+    if (action === 'editProduct') {
+      openProductDlg(sku ? (state.products || []).find(x => x.sku === sku) : null);
+      return;
+    }
+    if (action === 'delProduct') {
+      if (!confirm('删除商品 ' + sku + ' ？')) return;
+      try {
+        await api('/api/products/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku }) });
+      } catch (err) {
+        if (err.message.includes('级联') && confirm('该商品存在库存条目，连同库存一起删除？')) {
+          await api('/api/products/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sku, cascade: true }) });
+        } else { alert(err.message); return; }
+      }
+      await load(true);
+      return;
+    }
+    if (action === 'editCustomer') {
+      const key = id || name;
+      openCustomerDlg((state.customers || []).find(c => c.id === key || c.name === key));
+      return;
+    }
+    if (action === 'delCustomer') {
+      const c = (state.customers || []).find(c => c.id === (id || name) || c.name === name);
+      if (c && confirm('删除客户 ' + c.name + ' ？')) {
+        await api('/api/customers/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id, name: c.name }) });
+        await load(true);
+      }
+      return;
+    }
+    if (action === 'editVehicle') {
+      openVehicleDlg((state.vehicles || []).find(v => v.name === name));
+      return;
+    }
+    if (action === 'delVehicle') {
+      if (confirm('删除车辆 ' + name + ' ？')) {
+        await api('/api/vehicles/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        await load(true);
+      }
+      return;
+    }
     if (action === 'approve') {
       if (!confirm('确认已人工核对客户、商品、数量和价格？')) return;
       await api('/api/orders/' + encodeURIComponent(id) + '/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
@@ -292,6 +446,15 @@ function bindEvents() {
   const ed = $('edit');
   ed.addEventListener('click', e => { if (e.target === ed) ed.close(); });
   $('editForm').addEventListener('submit', submitEdit);
+  for (const [dlgId, formId, handler] of [
+    ['dlgProduct', 'dlgProductForm', submitProduct],
+    ['dlgCustomer', 'dlgCustomerForm', submitCustomer],
+    ['dlgVehicle', 'dlgVehicleForm', submitVehicle],
+  ]) {
+    const dlg = $(dlgId);
+    dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+    $(formId).addEventListener('submit', handler);
+  }
   $('statusFilter').addEventListener('change', e => {
     statusFilter = e.target.value;
     renderOrders('ordersList', state.orders.slice(0, 4), false);

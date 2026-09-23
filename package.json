@@ -1,6 +1,6 @@
 {
   "name": "chen-sheng-local-business-assistant",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "晨升膳食与高埗盈泰本地经营智能助手（多商家适配版）",
   "scripts": {
