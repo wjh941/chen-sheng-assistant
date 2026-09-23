@@ -1,5 +1,7 @@
 # 本地经营智能助手（多商家适配版）
 
+[![CI](https://github.com/wjh941/chen-sheng-assistant/actions/workflows/test.yml/badge.svg)](https://github.com/wjh941/chen-sheng-assistant/actions/workflows/test.yml) ![Node.js ≥ 18](https://img.shields.io/badge/Node.js%20%E2%89%A5%2018-339933) ![零第三方依赖](https://img.shields.io/badge/%E9%9B%B6%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9D%E8%B5%96-2ea44f) ![版本 v0.8.0](https://img.shields.io/badge/%E7%89%88%E6%9C%AC%20v0.8.0-0969da)
+
 面向中小食品/副食商家的本地经营工作台：在浏览器中完成订单登记、审核、拣货与配送调度，数据全部保存在本机。外部账本（默认适配速达 5000.Online-Pro）仍是正式业务账本，本项目第一阶段不连接、不读取、不修改其数据库。
 
 - **换商家零代码**：换一份商家配置 + 一份数据文件即可，见下方「适配新商家」。
@@ -74,6 +76,55 @@ npm run init -- "商家简称" "外部账本简称"    # 例：npm run init -- "
 3. 在页面或数据文件中补齐客户、商品（含别名与成本价）、库存、车辆主数据。
 
 不使用初始化脚本也可以：任意复制一份 `config/merchant.json` 与数据文件，改好内容后用环境变量指向它们。**旧数据迁移**：直接把旧 `DATA_FILE` 指过来即可——旧版订单 ID 可自动反推创建时间，缺失字段会自动兜底。
+
+## 内部逻辑
+
+### 目录结构与职责
+
+```text
+chen-sheng-assistant/
+├── server.js                  # 唯一入口：路由分发、配置加载、数据读写、每日备份、审计、访问口令
+├── lib/
+│   └── xlsx.js                # 零依赖 .xlsx 读写：zip 中央目录 + zlib 解压读，STORE 不压缩写
+├── scripts/
+│   └── init-merchant.js       # 新商家初始化：生成 config/merchant-<简称>.json 与 data/<简称>.json
+├── config/
+│   └── merchant.json          # 商家品牌与外部账本配置（默认指向，可被 CONFIG_FILE 覆盖）
+├── data/
+│   └── demo.json              # 业务数据：customers/products/orders/inventory/vehicles/audit
+├── public/                    # 前端静态资源，由 server.js 托管
+│   ├── index.html             # 页面骨架与侧边栏导航
+│   ├── app.js                 # hash 路由六大页面、HTML 转义渲染、X-Operator 头
+│   └── style.css              # 样式
+├── server.test.js             # node --test 用例：随机端口 + 临时数据副本
+├── package.json               # scripts：start/dev/test/check/init；engines 要求 Node >= 18；零 dependencies
+└── .github/
+    └── workflows/
+        └── test.yml           # CI：push/PR 时在 Node 18/20/22 上跑 npm run check + npm test
+```
+
+### 模块与数据流
+
+```mermaid
+flowchart TB
+    B["浏览器 public/app.js"] -->|fetch API 请求<br/>带 X-Operator 头| G["门禁<br/>ACCESS_TOKEN 会话校验<br/>POST 同源校验"]
+    G -->|通过| R["route 统一路由"]
+    R -->|品牌与账本文案| C["readConfig<br/>DEFAULT_CONFIG deepMerge merchant.json<br/>mtime 缓存"]
+    R -->|GET 查询| RD["read 数据层<br/>缺文件自动播种空库"]
+    R -->|POST 变更| W["订单状态机<br/>库存调整与配送调度"]
+    W -->|记录操作| AU["audit<br/>动作 + 详情 + 操作员<br/>截断保留 500 条"]
+    W -->|持久化| SV["save<br/>.tmp 临时文件 + rename 原子替换"]
+    SV -->|每天首次写入前| BK["backupDaily<br/>快照 data/backups 滚动保留 14 份"]
+    SV -->|整体写入| F["DATA_FILE 数据文件"]
+    R -->|非 /api 路径| S["public 静态文件<br/>路径规范化防目录穿越"]
+```
+
+### 关键机制
+
+- **换商家为何零代码**：服务只认 `CONFIG_FILE` / `DATA_FILE` 两个环境变量（`server.js` 启动常量，缺省即 `config/merchant.json` 与 `data/demo.json`）；`readConfig()` 把配置文件 `deepMerge` 到内置 `DEFAULT_CONFIG` 上——允许只写部分字段、按 mtime 缓存（改完即生效）——其中 `erp.short` 决定界面里"登记速达单号"等文案如何替换，所以换商家 = 换一对文件 + 环境变量指向，代码零改动。
+- **订单数据写到哪、备份何时触发**：订单/客户/商品/库存/车辆/审计同住一个 JSON 文档；`save()` 先写 `.tmp` 再 `renameSync` 原子替换（`server.js` 第 128-136 行），且其第一行调用 `backupDaily()`——每天第一次写入前把当前文件快照到 `data/backups/`，按文件名排序滚动删除、只留最近 14 份。
+- **访问令牌如何校验**：设置 `ACCESS_TOKEN` 后，除 `/login`、`/logout`、`/api/health` 外全部请求先过门禁；Cookie 里存的是 `HMAC(进程随机密钥, ACCESS_TOKEN)` 而非口令本身，比较走 `crypto.timingSafeEqual` 恒时比较，登出即轮换密钥使所有已发会话立即失效（`server.js` 第 173-191 行）。
+- **审计与数据同事务**：每次写操作把 `{time, action, detail, operator}` 前插进数据文档的 `audit` 数组并截断 500 条，随业务数据一起原子落盘（`server.js` 第 147-153 行），不存在"日志写成功、数据没落盘"的中间态。
 
 ## 数据与安全
 
