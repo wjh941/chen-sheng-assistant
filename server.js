@@ -17,6 +17,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { readXlsx, writeXlsx } = require('./lib/xlsx');
 const { createStore } = require('./lib/store');
+const { validItems, parseItemLine, enrich, analytics, orderActions } = require('./lib/orders');
 
 const root = __dirname;
 const pkg = require('./package.json');
@@ -157,83 +158,6 @@ function sameOrigin(req) {
   const o = req.headers.origin;
   if (!o) return true;
   try { return new URL(o).host === req.headers.host; } catch { return false; }
-}
-
-function validItems(items) {
-  return Array.isArray(items) && items.length > 0 && items.every(i => {
-    const x = typeof i === 'string' ? parseItemLine(i) : i;
-    return x && String(x.name || '').trim() && Number(x.qty) > 0;
-  });
-}
-
-// "商品,数量,单位" 逐行解析：兼容制表符与中英文逗号，缺数量默认 1（导入与手填行为一致）
-function parseItemLine(line) {
-  const c = String(line).split(/[\t,，]/).map(v => v.trim());
-  return { name: c[0], qty: Number(c[1]) > 0 ? Number(c[1]) : 1, unit: c[2] || '件' };
-}
-
-function productFor(d, name) {
-  return (d.products || []).find(p => p.name === name || (p.aliases || []).includes(name) || p.sku === name);
-}
-
-function customerFor(d, name) {
-  return (d.customers || []).find(c => c.name === name || (c.aliases || []).includes(name));
-}
-
-// 订单派生信息：商品匹配、客户匹配（软提示，不阻断）、异常列表、createdAt 回填
-function enrich(d, order) {
-  if (!order.createdAt) {
-    const m = /^(LOCAL|IMP)-(\d{13})/.exec(String(order.id)); // 旧版毫秒时间戳 ID 可反解
-    order.createdAt = (m && new Date(Number(m[2])).toISOString()) || order.confirmedAt || '1970-01-01T00:00:00.000Z';
-  }
-  order.matching = (order.items || []).map(i => {
-    const p = i.sku ? (d.products || []).find(v => v.sku === i.sku) : productFor(d, i.name);
-    return { ...i, sku: (p && p.sku) || i.sku || '', matched: !!p || !!i.sku };
-  });
-  order.exceptions = order.matching.filter(i => !i.matched).map(i => '未匹配商品：' + i.name);
-  order.customerMatched = !!customerFor(d, order.customer);
-  if (order.exceptions.length && order.status === '待人工确认') order.status = '异常待审核';
-  return order;
-}
-
-// 拣货计划：同一订单内同 SKU 先到先得，超出可用量记缺口
-function pickPlan(d, o) {
-  const used = {};
-  return o.matching.map(i => {
-    const inv = (d.inventory || []).find(v => v.sku === i.sku);
-    const qty = Number(i.qty);
-    const available = Math.max(0, (inv ? inv.stock : 0) - (used[i.sku] || 0));
-    used[i.sku] = (used[i.sku] || 0) + qty;
-    return { sku: i.sku, name: i.name, requested: qty, available, shortage: Math.max(0, qty - available), unit: i.unit || (inv && inv.unit) || '件' };
-  });
-}
-
-// 经营分析：全部由本地订单实时汇总（不再使用写死的 metrics）
-function analytics(d) {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const costBySku = {};
-  for (const inv of d.inventory || []) costBySku[inv.sku] = Number(inv.cost) || 0;
-  let todaySales = 0, monthSales = 0, monthCost = 0;
-  for (const o of d.orders || []) {
-    if (o.status === '已取消') continue;
-    const ts = Date.parse(o.createdAt || '') || 0;
-    if (!ts) continue;
-    if (ts >= todayStart) todaySales += Number(o.amount) || 0;
-    if (ts >= monthStart) {
-      monthSales += Number(o.amount) || 0;
-      for (const i of o.matching || o.items || []) monthCost += (Number(i.qty) || 0) * (costBySku[i.sku] || 0);
-    }
-  }
-  return {
-    todaySales,
-    monthSales,
-    monthCost: Math.round(monthCost * 100) / 100,
-    monthProfit: Math.round((monthSales - monthCost) * 100) / 100,
-    pending: (d.orders || []).filter(o => !['已登记速达单号', '已取消'].includes(o.status)).length,
-    lowStock: (d.inventory || []).filter(x => Number(x.stock) < Number(x.safe)).length,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -442,71 +366,9 @@ function route(req, res) {
       const o = d.orders.find(v => v.id === decodeURIComponent(match[1]));
       if (!o) return send(res, 404, { error: '订单不存在' });
       enrich(d, o);
-      const act = match[2];
-
-      if (act === 'edit') {
-        // 确认前可修改：仅限"待人工确认 / 异常待审核"订单
-        if (!['待人工确认', '异常待审核'].includes(o.status)) return send(res, 409, { error: '只有未确认的订单才能修改；已确认订单请先取消后重新录入' });
-        if (x.customer !== undefined && !String(x.customer || '').trim()) return send(res, 400, { error: '客户不能为空' });
-        if (x.amount !== undefined && (Number.isNaN(Number(x.amount)) || Number(x.amount) < 0)) return send(res, 400, { error: '订单金额必须是非负数字' });
-        if (x.items !== undefined) {
-          if (!validItems(x.items)) return send(res, 400, { error: '商品明细无效，数量必须大于0' });
-          o.items = x.items.map(i => (typeof i === 'string' ? parseItemLine(i) : i));
-        }
-        if (String(x.customer || '').trim()) o.customer = x.customer.trim();
-        if (x.amount !== undefined) o.amount = Number(x.amount) || 0;
-        o.status = '待人工确认'; // 重新匹配商品与客户
-        enrich(d, o);
-        store.audit(d, '修改订单', o.id, opOf(req));
-
-      } else if (act === 'resolve') {
-        // 只允许从"异常待审核"处理，防止把已确认订单打回
-        if (o.status !== '异常待审核') return send(res, 409, { error: '只有异常待审核订单才能处理商品异常' });
-        const item = o.items.find(i => i.name === x.itemName);
-        const p = (d.products || []).find(v => v.sku === x.sku);
-        if (!item || !p) return send(res, 400, { error: '商品明细或SKU不存在' });
-        item.name = p.name; item.sku = p.sku;
-        o.status = '待人工确认';
-        enrich(d, o);
-        store.audit(d, '人工处理商品异常', o.id + ' ' + p.sku, opOf(req));
-
-      } else if (act === 'cancel') {
-        if (['已送达', '已取消'].includes(o.status) || o.deliveryStatus === '已送达') {
-          return send(res, 409, { error: '当前订单不能取消' });
-        }
-        o.status = '已取消';
-        o.cancelReason = String(x.reason || '人工取消');
-        store.audit(d, '人工取消订单', o.id + ' ' + o.cancelReason, opOf(req));
-
-      } else if (act === 'approve') {
-        if (o.exceptions && o.exceptions.length) return send(res, 409, { error: '存在未匹配商品，请先处理异常' });
-        if (o.status !== '待人工确认') return send(res, 409, { error: '只有待人工确认订单才能确认' });
-        o.status = '已确认待速达开单';
-        o.confirmedAt = new Date().toISOString();
-        store.audit(d, '人工确认订单', o.id, opOf(req));
-
-      } else if (act === 'pick') {
-        if (o.status !== '已登记速达单号') return send(res, 409, { error: '请先完成速达单号登记' });
-        const plan = pickPlan(d, o);
-        if (plan.some(i => i.shortage > 0)) {
-          return send(res, 409, { error: '库存不足，请先人工调整或采购', shortages: plan.filter(i => i.shortage > 0) });
-        }
-        // 校验通过后按拣货量扣减库存，避免多单合计超卖
-        for (const line of plan) {
-          const inv = d.inventory.find(v => v.sku === line.sku);
-          if (inv) inv.stock = Math.max(0, Number(inv.stock) - line.requested);
-        }
-        o.pickPlan = plan;
-        o.pickStatus = '已生成拣货任务';
-        store.audit(d, '生成拣货任务（已扣减库存）', o.id, opOf(req));
-
-      } else { // speeda：登记外部账本单号（已移除任何 force 旁路）
-        if (o.status !== '已确认待速达开单') return send(res, 409, { error: '请先人工确认订单' });
-        if (!String(x.speedaNo || '').trim()) return send(res, 400, { error: '请填写速达单号' });
-        o.speedaNo = String(x.speedaNo).trim();
-        o.status = '已登记速达单号';
-        store.audit(d, '登记速达单号', o.id + ' → ' + o.speedaNo, opOf(req));
-      }
+      // 状态机在 lib/orders.js：校验 → 流转 → 审计；返回错误描述则原样响应
+      const err = orderActions[match[2]](d, o, x, { audit: store.audit, operator: opOf(req) });
+      if (err) return send(res, err.status, err.body);
       store.save(d);
       send(res, 200, o);
     });
