@@ -84,6 +84,35 @@ async function flowToSpeeda(port, items, amount) {
 
 const riceStock = file => JSON.parse(fs.readFileSync(file, 'utf8')).inventory.find(v => v.sku === 'RICE-25').stock;
 
+// 手工构造只含一个 DEFLATE 条目的 zip：lib/xlsx 的写出走 STORE（不压缩），
+// 要测"高压缩比条目被拒"必须自造压缩条目。readZip 不校验 CRC，可省略真实值。
+function zipWithDeflatedEntry(name, raw) {
+  const zlib = require('zlib');
+  const data = zlib.deflateRawSync(raw);
+  const nameBuf = Buffer.from(name, 'utf8');
+  const lh = Buffer.alloc(30); // 本地文件头
+  lh.writeUInt32LE(0x04034b50, 0);
+  lh.writeUInt16LE(20, 4);
+  lh.writeUInt16LE(8, 8);            // DEFLATE
+  lh.writeUInt32LE(data.length, 18); // 压缩后大小
+  lh.writeUInt32LE(raw.length, 22);  // 原始大小
+  lh.writeUInt16LE(nameBuf.length, 26);
+  const cd = Buffer.alloc(46); // 中央目录条目
+  cd.writeUInt32LE(0x02014b50, 0);
+  cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6);
+  cd.writeUInt16LE(8, 10);           // DEFLATE
+  cd.writeUInt32LE(data.length, 20);
+  cd.writeUInt32LE(raw.length, 24);
+  cd.writeUInt16LE(nameBuf.length, 28);
+  cd.writeUInt32LE(0, 42); // 本地头偏移
+  const eocd = Buffer.alloc(22); // 目录结束记录
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(1, 8); eocd.writeUInt16LE(1, 10);
+  eocd.writeUInt32LE(46 + nameBuf.length, 12);
+  eocd.writeUInt32LE(30 + nameBuf.length + data.length, 16);
+  return Buffer.concat([lh, nameBuf, data, cd, nameBuf, eocd]);
+}
+
 // ---------------------------------------------------------------------------
 test('项目文件和数据模型存在', () => {
   const d = JSON.parse(fs.readFileSync('data/demo.json'));
@@ -488,5 +517,38 @@ test('车辆主数据：新增后可参与配送调度，可改名与删除', as
     const del = await request(p, '/api/vehicles/delete', 'POST', { name: '粤S·C8888 三轮车' });
     assert.equal(del.status, 200);
     assert.equal((await request(p, '/api/vehicles/delete', 'POST', { name: '粤S·C8888 三轮车' })).status, 404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 安全收尾：xlsx 解压膨胀上限 / 登录失败限速
+// ---------------------------------------------------------------------------
+test('高压缩比 xlsx 条目超过解压上限被拒为 400（防 zip 炸弹）', async () => {
+  await withServer({}, async p => {
+    // 128MB 全零流 deflate 后仅约 130KB：小请求体即可声明巨大的解压输出
+    const bomb = zipWithDeflatedEntry('xl/worksheets/sheet1.xml', Buffer.alloc(128 * 1024 * 1024, 0));
+    const r = await request(p, '/api/import', 'POST', { customer: '测试食堂', filename: 'bomb.xlsx', contentBase64: bomb.toString('base64') });
+    assert.equal(r.status, 400);
+    assert.ok(String(r.body.error).includes('解压后超过'), '错误提示应说明解压超限而非笼统失败');
+  });
+});
+
+test('登录失败限速：窗口内连错 5 次即锁定，正确口令也 429，锁过期后恢复', async () => {
+  await withServer({
+    env: { ACCESS_TOKEN: 'secret123', LOGIN_RATE_WINDOW_MS: '5000', LOGIN_RATE_LOCK_MS: '300' },
+  }, async p => {
+    for (let i = 0; i < 5; i++) {
+      assert.equal((await request(p, '/login', 'POST', { token: 'wrong' })).status, 401);
+    }
+    const lockedWrong = await request(p, '/login', 'POST', { token: 'wrong' });
+    assert.equal(lockedWrong.status, 429); // 锁定期内错口令一律 429
+    const lockedGood = await request(p, '/login', 'POST', { token: 'secret123' });
+    assert.equal(lockedGood.status, 429); // 锁定期内正确口令也拒绝，不给枚举口令的机会
+    assert.ok(!lockedGood.headers['set-cookie'], '锁定期间不得下发会话 Cookie');
+    await new Promise(r => setTimeout(r, 600)); // 等锁过期（测试注入了缩短的锁定时长）
+    const ok = await request(p, '/login', 'POST', { token: 'secret123' });
+    assert.equal(ok.status, 200);
+    // 成功登录清零计数：之后偶发一次失败不会立刻再锁定
+    assert.equal((await request(p, '/login', 'POST', { token: 'wrong' })).status, 401);
   });
 });

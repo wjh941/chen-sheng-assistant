@@ -201,6 +201,36 @@ function tokenOk(req) {
   return !ACCESS_TOKEN || hasToken(req);
 }
 
+// ---------- 登录失败限速（进程内存，按远端 IP） ----------
+// ACCESS_TOKEN 是共享口令，无限速时攻击者可在 /login 上无限暴力尝试；
+// 滑动窗口内失败达上限即锁定一段时间，锁定期间不比对口令、一律 429。
+// 只存进程内存：重启即清零，对单进程本地部署足够，也避免引入存储依赖。
+// 窗口/阈值/锁定时长可用环境变量覆盖（测试用它缩短等待，默认生产值不变）。
+const LOGIN_RATE_WINDOW_MS = Number(process.env.LOGIN_RATE_WINDOW_MS) || 60 * 1000;  // 失败计数窗口：60 秒
+const LOGIN_RATE_MAX_FAILS = Number(process.env.LOGIN_RATE_MAX_FAILS) || 5;          // 窗口内允许失败次数
+const LOGIN_RATE_LOCK_MS = Number(process.env.LOGIN_RATE_LOCK_MS) || 5 * 60 * 1000;  // 达上限后锁定：5 分钟
+const loginFails = new Map(); // ip -> { fails: number[], lockUntil: number }
+
+function loginLockedMs(req) {
+  const rec = loginFails.get(req.socket.remoteAddress || '');
+  return rec && Date.now() < rec.lockUntil ? rec.lockUntil - Date.now() : 0;
+}
+
+function recordLoginFail(req) {
+  const ip = req.socket.remoteAddress || '';
+  const now = Date.now();
+  const rec = loginFails.get(ip) || { fails: [], lockUntil: 0 };
+  rec.fails = rec.fails.filter(t => now - t < LOGIN_RATE_WINDOW_MS); // 滑动窗口：过期失败不再计数，也防数组膨胀
+  rec.fails.push(now);
+  if (rec.fails.length >= LOGIN_RATE_MAX_FAILS) rec.lockUntil = now + LOGIN_RATE_LOCK_MS;
+  if (loginFails.size > 10000) loginFails.clear(); // 兜底：极端扫描下防止 Map 无限膨胀（代价仅是限速计数归零）
+  loginFails.set(ip, rec);
+}
+
+function clearLoginFails(req) {
+  loginFails.delete(req.socket.remoteAddress || ''); // 成功登录清零，避免误伤同 IP 的正常使用
+}
+
 function loginPage(msg) {
   return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>登录</title></head>' +
     '<body style="font-family:system-ui;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f5f7f9">' +
@@ -358,7 +388,18 @@ function route(req, res) {
   if (req.method === 'GET' && u.pathname === '/login') return send(res, 200, loginPage(), 'text/html; charset=utf-8');
   if (req.method === 'POST' && u.pathname === '/login') {
     return body(req, x => {
-      if (!safeEqual(String(x.token || ''), ACCESS_TOKEN)) return send(res, 401, { error: '口令错误' });
+      // 锁定期内不比对口令直接 429：让暴力尝试的代价随次数上升，而非恒定可枚举
+      const lockedMs = loginLockedMs(req);
+      if (lockedMs > 0) {
+        return send(res, 429, { error: '登录失败次数过多，请稍后再试' }, 'application/json; charset=utf-8', {
+          'Retry-After': String(Math.ceil(lockedMs / 1000)), // 机器可读的剩余锁定秒数
+        });
+      }
+      if (!safeEqual(String(x.token || ''), ACCESS_TOKEN)) {
+        recordLoginFail(req);
+        return send(res, 401, { error: '口令错误' });
+      }
+      clearLoginFails(req);
       send(res, 200, { ok: true }, 'application/json; charset=utf-8', {
         'Set-Cookie': 'ops_token=' + encodeURIComponent(sessionSig()) + '; Path=/; HttpOnly; SameSite=Strict',
       });

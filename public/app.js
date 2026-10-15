@@ -351,6 +351,8 @@ async function onAction(b) {
     if (action === 'printpick') { printPick(id); return; }
     if (action === 'printdelivery') { printDelivery(id); return; }
     if (action === 'showall') { pageLimit[target] = Infinity; load(true); return; }
+    if (action === 'open-import') { openImport(); return; } // 静态骨架顶栏/订单页的"导入订单"按钮
+    if (action === 'show') { show(target); return; } // 静态骨架总览页的"查看全部 / 补货建议"页内跳转
     if (action === 'editProduct') {
       openProductDlg(sku ? (state.products || []).find(x => x.sku === sku) : null);
       return;
@@ -460,6 +462,8 @@ function bindEvents() {
     renderOrders('ordersList', state.orders.slice(0, 4), false);
     renderOrders('allOrders', state.orders);
   });
+  // 搜索框输入过滤（原为骨架内联 oninput，迁入统一绑定，保持行为一致）
+  $('search').addEventListener('input', () => renderOrders('allOrders', state.orders));
   const op = $('operatorName');
   op.value = localStorage.getItem('ops_operator') || '';
   op.addEventListener('change', () => { localStorage.setItem('ops_operator', op.value.trim()); });

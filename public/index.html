@@ -38,7 +38,7 @@
       </div>
       <div class="header-actions">
         <button class="secondary" id="btnRefresh">刷新</button>
-        <button class="primary" id="btnImport" onclick="openImport()">＋ 导入订单</button>
+        <button class="primary" id="btnImport" data-action="open-import">＋ 导入订单</button>
       </div>
     </header>
 
@@ -52,11 +52,11 @@
       </div>
       <div class="grid">
         <div class="panel wide">
-          <div class="panel-head"><h2>订单处理队列</h2><button class="link" onclick="show('orders')">查看全部 →</button></div>
+          <div class="panel-head"><h2>订单处理队列</h2><button class="link" data-action="show" data-target="orders">查看全部 →</button></div>
           <div id="ordersList"></div>
         </div>
         <div class="panel">
-          <div class="panel-head"><h2>库存预警</h2><button class="link" onclick="show('warehouse')">补货建议 →</button></div>
+          <div class="panel-head"><h2>库存预警</h2><button class="link" data-action="show" data-target="warehouse">补货建议 →</button></div>
           <div id="stockList"></div>
         </div>
       </div>
@@ -67,10 +67,10 @@
       <div class="panel">
         <div class="panel-head">
           <h2>订单中心</h2>
-          <button class="primary small" onclick="openImport()">导入微信 / Excel / 图片</button>
+          <button class="primary small" data-action="open-import">导入微信 / Excel / 图片</button>
         </div>
         <div class="toolbar">
-          <input id="search" placeholder="搜索客户、订单号或来源" oninput="renderOrders('allOrders',state.orders)">
+          <input id="search" placeholder="搜索客户、订单号或来源">
           <select id="statusFilter" class="status-select"><option value="">全部状态</option></select>
           <span class="muted">重要修改均需人工确认</span>
         </div>
