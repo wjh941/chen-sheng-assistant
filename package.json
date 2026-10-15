@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check lib/xlsx.js && node --check public/app.js",
+    "check": "node --check server.js && node --check lib/xlsx.js && node --check lib/store.js && node --check lib/orders.js && node --check lib/http-utils.js && node --check lib/auth.js && node --check lib/router.js && node --check public/app.js",
     "init": "node scripts/init-merchant.js"
   },
   "engines": {
