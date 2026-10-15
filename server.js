@@ -14,10 +14,11 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const { readXlsx, writeXlsx } = require('./lib/xlsx');
 const { createStore } = require('./lib/store');
 const { validItems, parseItemLine, enrich, analytics, orderActions } = require('./lib/orders');
+const { send, body, opOf, sameOrigin } = require('./lib/http-utils');
+const { createAuth, loginPage } = require('./lib/auth');
 
 const root = __dirname;
 const pkg = require('./package.json');
@@ -33,132 +34,14 @@ const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
 // 数据层实例：配置 + 数据文件 + 审计（依赖显式注入，不用全局单例）
 const store = createStore({ dataFile: DATA_FILE, configFile: CONFIG_FILE, appVersion: APP_VERSION });
 
-// ---------------------------------------------------------------------------
-// 通用工具
-// ---------------------------------------------------------------------------
-
-// 操作员标识：前端通过 X-Operator 头携带（HTTP 头仅支持 ASCII，故传输前经 URI 编码，≤20 字符）
-function opOf(req) {
-  let v = String(req.headers['x-operator'] || '').trim();
-  if (!v) return '';
-  try { v = decodeURIComponent(v); } catch { /* 保留原值 */ }
-  return v.slice(0, 20);
-}
-
-const SECURITY_HEADERS = {
-  'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'DENY',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-};
-
-function send(res, status, body, type, extraHeaders) {
-  if (res.headersSent) { res.end(); return; }
-  res.writeHead(status, Object.assign({}, SECURITY_HEADERS, { 'Content-Type': type || 'application/json; charset=utf-8' }, extraHeaders || {}));
-  if (Buffer.isBuffer(body)) return res.end(body);
-  res.end(typeof body === 'string' ? body : JSON.stringify(body));
-}
-
-// ---------- 访问口令（可选，适配局域网多人部署） ----------
-// Cookie 存的是"HMAC(进程随机密钥, ACCESS_TOKEN)"而非口令本身；
-// 登出时轮换密钥，所有已发会话立即失效，服务重启也会使全部会话失效。
-let sessionSecret = crypto.randomUUID();
-
-function sessionSig() {
-  return crypto.createHmac('sha256', sessionSecret).update(ACCESS_TOKEN).digest('base64url');
-}
-
-function safeEqual(a, b) {
-  const ab = Buffer.from(String(a)), bb = Buffer.from(String(b));
-  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
-}
-
-function hasToken(req) {
-  const m = /(?:^|;\s*)ops_token=([^;]+)/.exec(req.headers.cookie || '');
-  if (!m) return false;
-  // 畸形 Cookie（如 ops_token=%zz）会令 decodeURIComponent 抛 URIError，
-  // 必须按“未登录”处理而不是让它炸成 500
-  let token;
-  try { token = decodeURIComponent(m[1]); } catch { return false; }
-  return safeEqual(token, sessionSig());
-}
-
-function tokenOk(req) {
-  return !ACCESS_TOKEN || hasToken(req);
-}
-
-// ---------- 登录失败限速（进程内存，按远端 IP） ----------
-// ACCESS_TOKEN 是共享口令，无限速时攻击者可在 /login 上无限暴力尝试；
-// 滑动窗口内失败达上限即锁定一段时间，锁定期间不比对口令、一律 429。
-// 只存进程内存：重启即清零，对单进程本地部署足够，也避免引入存储依赖。
+// 鉴权实例：会话签名密钥与登录限速计数都在实例内（进程内存，重启即清零）
 // 窗口/阈值/锁定时长可用环境变量覆盖（测试用它缩短等待，默认生产值不变）。
-const LOGIN_RATE_WINDOW_MS = Number(process.env.LOGIN_RATE_WINDOW_MS) || 60 * 1000;  // 失败计数窗口：60 秒
-const LOGIN_RATE_MAX_FAILS = Number(process.env.LOGIN_RATE_MAX_FAILS) || 5;          // 窗口内允许失败次数
-const LOGIN_RATE_LOCK_MS = Number(process.env.LOGIN_RATE_LOCK_MS) || 5 * 60 * 1000;  // 达上限后锁定：5 分钟
-const loginFails = new Map(); // ip -> { fails: number[], lockUntil: number }
-
-function loginLockedMs(req) {
-  const rec = loginFails.get(req.socket.remoteAddress || '');
-  return rec && Date.now() < rec.lockUntil ? rec.lockUntil - Date.now() : 0;
-}
-
-function recordLoginFail(req) {
-  const ip = req.socket.remoteAddress || '';
-  const now = Date.now();
-  const rec = loginFails.get(ip) || { fails: [], lockUntil: 0 };
-  rec.fails = rec.fails.filter(t => now - t < LOGIN_RATE_WINDOW_MS); // 滑动窗口：过期失败不再计数，也防数组膨胀
-  rec.fails.push(now);
-  if (rec.fails.length >= LOGIN_RATE_MAX_FAILS) rec.lockUntil = now + LOGIN_RATE_LOCK_MS;
-  if (loginFails.size > 10000) loginFails.clear(); // 兜底：极端扫描下防止 Map 无限膨胀（代价仅是限速计数归零）
-  loginFails.set(ip, rec);
-}
-
-function clearLoginFails(req) {
-  loginFails.delete(req.socket.remoteAddress || ''); // 成功登录清零，避免误伤同 IP 的正常使用
-}
-
-function loginPage(msg) {
-  return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>登录</title></head>' +
-    '<body style="font-family:system-ui;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#f5f7f9">' +
-    '<form onsubmit="fetch(\'/login\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({token:document.getElementById(\'t\').value})}).then(r=>{if(r.ok)location.href=\'/\';else document.getElementById(\'m\').textContent=\'口令错误，请重试\'})" ' +
-    'style="background:#fff;padding:40px;border-radius:14px;box-shadow:0 10px 40px #0002;width:320px">' +
-    '<h2 style="margin:0 0 8px">经营助手</h2><p style="color:#71817d;margin:0 0 16px">请输入访问口令</p>' +
-    '<input id="t" type="password" autofocus style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #d5e0da;border-radius:7px;margin-bottom:14px">' +
-    '<button style="width:100%;padding:12px;border:0;border-radius:8px;background:#d0f878;font-weight:700;cursor:pointer">进入</button>' +
-    '<p id="m" style="color:#c05621;margin:12px 0 0;min-height:1em">' + (msg || '') + '</p></form></body></html>';
-}
-
-// POST 只接受 JSON；带请求体的 POST 必须声明 application/json（顺带挡掉表单型 CSRF）
-function body(req, done) {
-  let b = '';
-  req.on('data', c => {
-    b += c;
-    if (b.length > 8 * 1024 * 1024) { send(req.res, 413, { error: '请求内容超过8 MB限制' }); req.destroy(); }
-  });
-  req.on('end', () => {
-    let x;
-    try {
-      if (b && !String(req.headers['content-type'] || '').includes('application/json')) {
-        return send(req.res, 415, { error: '请使用 application/json 内容类型' });
-      }
-      x = JSON.parse(b || '{}');
-    } catch {
-      return send(req.res, 400, { error: 'JSON无效' });
-    }
-    try {
-      done(x);
-    } catch (e) {
-      console.error('[error]', req.method, req.url, e);
-      send(req.res, 500, { error: '服务器内部错误：' + e.message });
-    }
-  });
-}
-
-// 简单同源校验：浏览器发起的跨站请求会带 Origin 头，与 Host 不一致即拒绝（脚本工具无 Origin 不受影响）
-function sameOrigin(req) {
-  const o = req.headers.origin;
-  if (!o) return true;
-  try { return new URL(o).host === req.headers.host; } catch { return false; }
-}
+const auth = createAuth({
+  accessToken: ACCESS_TOKEN,
+  rateWindowMs: Number(process.env.LOGIN_RATE_WINDOW_MS) || 60 * 1000,  // 失败计数窗口：60 秒
+  rateMaxFails: Number(process.env.LOGIN_RATE_MAX_FAILS) || 5,          // 窗口内允许失败次数
+  rateLockMs: Number(process.env.LOGIN_RATE_LOCK_MS) || 5 * 60 * 1000,  // 达上限后锁定：5 分钟
+});
 
 // ---------------------------------------------------------------------------
 // HTTP 路由
@@ -186,7 +69,7 @@ function route(req, res) {
   // ---- 访问口令门禁（设置 ACCESS_TOKEN 环境变量时启用） --------------------
   if (ACCESS_TOKEN) {
     const open = u.pathname === '/login' || u.pathname === '/logout' || u.pathname === '/api/health';
-    if (!open && !hasToken(req)) {
+    if (!open && !auth.hasToken(req)) {
       if (req.method === 'GET' && !u.pathname.startsWith('/api/')) {
         return send(res, 302, '', 'text/plain', { Location: '/login' });
       }
@@ -197,24 +80,24 @@ function route(req, res) {
   if (req.method === 'POST' && u.pathname === '/login') {
     return body(req, x => {
       // 锁定期内不比对口令直接 429：让暴力尝试的代价随次数上升，而非恒定可枚举
-      const lockedMs = loginLockedMs(req);
+      const lockedMs = auth.loginLockedMs(req);
       if (lockedMs > 0) {
         return send(res, 429, { error: '登录失败次数过多，请稍后再试' }, 'application/json; charset=utf-8', {
           'Retry-After': String(Math.ceil(lockedMs / 1000)), // 机器可读的剩余锁定秒数
         });
       }
-      if (!safeEqual(String(x.token || ''), ACCESS_TOKEN)) {
-        recordLoginFail(req);
+      if (!auth.tokenMatches(String(x.token || ''))) {
+        auth.recordLoginFail(req);
         return send(res, 401, { error: '口令错误' });
       }
-      clearLoginFails(req);
+      auth.clearLoginFails(req);
       send(res, 200, { ok: true }, 'application/json; charset=utf-8', {
-        'Set-Cookie': 'ops_token=' + encodeURIComponent(sessionSig()) + '; Path=/; HttpOnly; SameSite=Strict',
+        'Set-Cookie': 'ops_token=' + encodeURIComponent(auth.sessionSig()) + '; Path=/; HttpOnly; SameSite=Strict',
       });
     });
   }
   if (req.method === 'GET' && u.pathname === '/logout') {
-    sessionSecret = crypto.randomUUID(); // 轮换签名密钥：所有已发会话立即失效
+    auth.rotateSecret(); // 轮换签名密钥：所有已发会话立即失效
     return send(res, 302, '', 'text/plain', { Location: '/login', 'Set-Cookie': 'ops_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' });
   }
 
