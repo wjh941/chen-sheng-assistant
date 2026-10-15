@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { readXlsx, writeXlsx } = require('./lib/xlsx');
+const { createStore } = require('./lib/store');
 
 const root = __dirname;
 const pkg = require('./package.json');
@@ -28,129 +29,12 @@ const PORT = Number(process.env.PORT) || 3088;
 // 可选访问口令：设置后所有页面与接口（除 /login、/api/health）都需要登录
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
 
-// ---------------------------------------------------------------------------
-// 商家配置：默认值 + config/merchant.json 覆盖（允许只写部分字段）
-// ---------------------------------------------------------------------------
-const DEFAULT_CONFIG = {
-  app: {
-    name: '本地经营助手',           // 浏览器标题 / 健康检查
-    short: '本地助手',              // 侧边栏品牌短名
-    tagline: '本地经营智能助手',     // 品牌下一行小字
-    eyebrow: 'LOCAL · OPS',        // 顶部装饰小字
-    header: '早上好，今天也高效出货。',
-    company: '',                   // 公司全称行
-    footer: '● 局域网本地运行',
-    footerSmall: '数据不会上传云端',
-  },
-  erp: {
-    name: '外部账本',               // 完整账本名称（展示用）
-    short: '账本',                  // 短名：界面里"速达单号"等文案会动态替换
-  },
-};
-
-function deepMerge(base, over) {
-  const out = Array.isArray(base) ? [...base] : { ...base };
-  for (const [k, v] of Object.entries(over || {})) {
-    if (v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' && !Array.isArray(base[k])) {
-      out[k] = deepMerge(base[k], v);
-    } else if (v !== undefined) {
-      out[k] = v;
-    }
-  }
-  return out;
-}
-
-let configCache = null, configMtime = 0;
-function readConfig() {
-  try {
-    const stat = fs.statSync(CONFIG_FILE);
-    if (configCache && stat.mtimeMs === configMtime) return configCache;
-    const merged = deepMerge(DEFAULT_CONFIG, JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')));
-    configCache = merged; configMtime = stat.mtimeMs;
-    return merged;
-  } catch (e) {
-    if (e.code !== 'ENOENT') console.warn('[config] 配置文件读取失败，使用默认配置：' + e.message);
-    return deepMerge(DEFAULT_CONFIG, {});
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 数据层：临时文件 + 原子替换；基于 mtime 的内存缓存；文件缺失自动播种空库
-// ---------------------------------------------------------------------------
-function emptyData() {
-  return {
-    customers: [], products: [], orders: [], inventory: [], vehicles: [], audit: [],
-    appMeta: { version: APP_VERSION, createdAt: new Date().toISOString() },
-  };
-}
-
-let cache = null, cacheMtime = 0;
-function read() {
-  let stat;
-  try {
-    stat = fs.statSync(DATA_FILE);
-  } catch (e) {
-    if (e.code === 'ENOENT') { save(emptyData()); return structuredClone(cache); }
-    throw e;
-  }
-  if (cache && stat.mtimeMs === cacheMtime) return structuredClone(cache);
-  let parsed;
-  try {
-    parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-  } catch (e) {
-    throw new Error('数据文件不是有效的 JSON（' + DATA_FILE + '），请先备份并修复该文件');
-  }
-  for (const k of ['customers', 'products', 'orders', 'inventory', 'vehicles', 'audit']) {
-    if (!Array.isArray(parsed[k])) parsed[k] = [];
-  }
-  cache = parsed; cacheMtime = stat.mtimeMs;
-  return structuredClone(parsed);
-}
-
-// 每日自动备份：每天第一次写入前，把当前数据文件快照到 backups/，保留最近 14 份
-let lastBackupDay = '';
-function backupDaily() {
-  const today = new Date().toISOString().slice(0, 10);
-  if (lastBackupDay === today || !fs.existsSync(DATA_FILE)) return;
-  try {
-    const dir = path.join(path.dirname(DATA_FILE), 'backups');
-    fs.mkdirSync(dir, { recursive: true });
-    const base = path.basename(DATA_FILE).replace(/\.json$/i, '');
-    fs.copyFileSync(DATA_FILE, path.join(dir, base + '-' + today.replaceAll('-', '') + '.json'));
-    const files = fs.readdirSync(dir).filter(f => f.startsWith(base + '-') && f.endsWith('.json')).sort().reverse();
-    for (const f of files.slice(14)) fs.unlinkSync(path.join(dir, f));
-    lastBackupDay = today;
-  } catch (e) {
-    console.warn('[backup] 每日备份失败（不影响主流程）：' + e.message);
-  }
-}
-
-function save(d) {
-  backupDaily();
-  d.appMeta = Object.assign({}, d.appMeta, { version: APP_VERSION });
-  const tmp = DATA_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(d, null, 2) + '\n');
-  fs.renameSync(tmp, DATA_FILE);
-  cache = structuredClone(d);
-  cacheMtime = fs.statSync(DATA_FILE).mtimeMs;
-}
+// 数据层实例：配置 + 数据文件 + 审计（依赖显式注入，不用全局单例）
+const store = createStore({ dataFile: DATA_FILE, configFile: CONFIG_FILE, appVersion: APP_VERSION });
 
 // ---------------------------------------------------------------------------
 // 通用工具
 // ---------------------------------------------------------------------------
-let seq = 0;
-function newId(prefix) {
-  // 时间戳 + 序号 + 随机段，避免同毫秒并发创建撞号
-  return prefix + '-' + Date.now().toString(36) + (seq++).toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-}
-
-function audit(d, action, detail, operator) {
-  d.audit = d.audit || [];
-  const item = { id: Date.now() + seq, time: new Date().toISOString(), action, detail };
-  if (operator) item.operator = operator; // 操作员标识（前端填写，仅作记录）
-  d.audit.unshift(item);
-  d.audit = d.audit.slice(0, 500); // 防止审计日志无限膨胀
-}
 
 // 操作员标识：前端通过 X-Operator 头携带（HTTP 头仅支持 ASCII，故传输前经 URI 编码，≤20 字符）
 function opOf(req) {
@@ -415,7 +299,7 @@ function route(req, res) {
   // ---- 配置与健康检查 -----------------------------------------------------
   if (req.method === 'GET' && u.pathname === '/api/config') {
     return send(res, 200, {
-      config: readConfig(),
+      config: store.readConfig(),
       meta: {
         version: APP_VERSION,
         dataFile: path.basename(DATA_FILE),
@@ -426,31 +310,31 @@ function route(req, res) {
     });
   }
   if (req.method === 'GET' && u.pathname === '/api/health') {
-    d = read();
+    d = store.read();
     return send(res, 200, {
       ok: true, localOnly: true, version: APP_VERSION,
-      merchant: readConfig().app.short,
+      merchant: store.readConfig().app.short,
       orders: d.orders.length, customers: d.customers.length, products: d.products.length,
     });
   }
 
   // ---- 查询类 -------------------------------------------------------------
   if (req.method === 'GET' && u.pathname === '/api/overview') {
-    d = read();
+    d = store.read();
     d.orders.forEach(o => enrich(d, o));
     return send(res, 200, {
-      version: APP_VERSION, config: readConfig(),
+      version: APP_VERSION, config: store.readConfig(),
       customers: d.customers, products: d.products,
       orders: d.orders, inventory: d.inventory, vehicles: d.vehicles,
       audit: d.audit, analytics: analytics(d),
     });
   }
   if (req.method === 'GET' && u.pathname === '/api/catalog') {
-    d = read();
+    d = store.read();
     return send(res, 200, { customers: d.customers, products: d.products });
   }
   if (req.method === 'GET' && u.pathname === '/api/audit') {
-    d = read();
+    d = store.read();
     return send(res, 200, { items: (d.audit || []).slice(0, 100) });
   }
   if (req.method === 'GET' && u.pathname === '/api/export') {
@@ -463,7 +347,7 @@ function route(req, res) {
   }
   if (req.method === 'GET' && u.pathname === '/api/export/orders.xlsx') {
     // 订单对账导出：?month=YYYY-MM 可选，默认全部订单
-    d = read();
+    d = store.read();
     const month = u.searchParams.get('month');
     const rows = [['订单号', '创建时间', '客户', '来源', '状态', '金额', '速达单号', '配送状态', '商品明细', '取消原因']];
     for (const o of d.orders) {
@@ -488,9 +372,9 @@ function route(req, res) {
     return body(req, x => {
       if (!String(x.customer || '').trim() || !validItems(x.items)) return send(res, 400, { error: '客户和有效商品明细必填，数量必须大于0' });
       if (x.amount !== undefined && (Number.isNaN(Number(x.amount)) || Number(x.amount) < 0)) return send(res, 400, { error: '订单金额必须是非负数字' });
-      d = read();
+      d = store.read();
       const order = {
-        id: newId('LOCAL'),
+        id: store.newId('LOCAL'),
         customer: x.customer.trim(),
         source: x.source || '手工录入',
         status: '待人工确认',
@@ -502,8 +386,8 @@ function route(req, res) {
       };
       enrich(d, order);
       d.orders.unshift(order);
-      audit(d, '新增订单', order.id + ' ' + order.customer, opOf(req));
-      save(d);
+      store.audit(d, '新增订单', order.id + ' ' + order.customer, opOf(req));
+      store.save(d);
       send(res, 201, order);
     });
   }
@@ -530,9 +414,9 @@ function route(req, res) {
         items = rows.map(parseItemLine);
       }
       if (!validItems(items)) return send(res, 400, { error: '导入内容没有有效商品或数量' });
-      d = read();
+      d = store.read();
       const o = {
-        id: newId('IMP'),
+        id: store.newId('IMP'),
         customer: x.customer.trim(),
         source: x.source || x.filename || 'Excel/CSV',
         status: '待人工确认',
@@ -544,8 +428,8 @@ function route(req, res) {
       };
       enrich(d, o);
       d.orders.unshift(o);
-      audit(d, '导入订单', o.id + ' ' + o.source, opOf(req));
-      save(d);
+      store.audit(d, '导入订单', o.id + ' ' + o.source, opOf(req));
+      store.save(d);
       send(res, 201, o);
     });
   }
@@ -554,7 +438,7 @@ function route(req, res) {
   const match = u.pathname.match(/^\/api\/orders\/([^/]+)\/(approve|speeda|pick|resolve|cancel|edit)$/);
   if (req.method === 'POST' && match) {
     return body(req, x => {
-      d = read();
+      d = store.read();
       const o = d.orders.find(v => v.id === decodeURIComponent(match[1]));
       if (!o) return send(res, 404, { error: '订单不存在' });
       enrich(d, o);
@@ -573,7 +457,7 @@ function route(req, res) {
         if (x.amount !== undefined) o.amount = Number(x.amount) || 0;
         o.status = '待人工确认'; // 重新匹配商品与客户
         enrich(d, o);
-        audit(d, '修改订单', o.id, opOf(req));
+        store.audit(d, '修改订单', o.id, opOf(req));
 
       } else if (act === 'resolve') {
         // 只允许从"异常待审核"处理，防止把已确认订单打回
@@ -584,7 +468,7 @@ function route(req, res) {
         item.name = p.name; item.sku = p.sku;
         o.status = '待人工确认';
         enrich(d, o);
-        audit(d, '人工处理商品异常', o.id + ' ' + p.sku, opOf(req));
+        store.audit(d, '人工处理商品异常', o.id + ' ' + p.sku, opOf(req));
 
       } else if (act === 'cancel') {
         if (['已送达', '已取消'].includes(o.status) || o.deliveryStatus === '已送达') {
@@ -592,14 +476,14 @@ function route(req, res) {
         }
         o.status = '已取消';
         o.cancelReason = String(x.reason || '人工取消');
-        audit(d, '人工取消订单', o.id + ' ' + o.cancelReason, opOf(req));
+        store.audit(d, '人工取消订单', o.id + ' ' + o.cancelReason, opOf(req));
 
       } else if (act === 'approve') {
         if (o.exceptions && o.exceptions.length) return send(res, 409, { error: '存在未匹配商品，请先处理异常' });
         if (o.status !== '待人工确认') return send(res, 409, { error: '只有待人工确认订单才能确认' });
         o.status = '已确认待速达开单';
         o.confirmedAt = new Date().toISOString();
-        audit(d, '人工确认订单', o.id, opOf(req));
+        store.audit(d, '人工确认订单', o.id, opOf(req));
 
       } else if (act === 'pick') {
         if (o.status !== '已登记速达单号') return send(res, 409, { error: '请先完成速达单号登记' });
@@ -614,16 +498,16 @@ function route(req, res) {
         }
         o.pickPlan = plan;
         o.pickStatus = '已生成拣货任务';
-        audit(d, '生成拣货任务（已扣减库存）', o.id, opOf(req));
+        store.audit(d, '生成拣货任务（已扣减库存）', o.id, opOf(req));
 
       } else { // speeda：登记外部账本单号（已移除任何 force 旁路）
         if (o.status !== '已确认待速达开单') return send(res, 409, { error: '请先人工确认订单' });
         if (!String(x.speedaNo || '').trim()) return send(res, 400, { error: '请填写速达单号' });
         o.speedaNo = String(x.speedaNo).trim();
         o.status = '已登记速达单号';
-        audit(d, '登记速达单号', o.id + ' → ' + o.speedaNo, opOf(req));
+        store.audit(d, '登记速达单号', o.id + ' → ' + o.speedaNo, opOf(req));
       }
-      save(d);
+      store.save(d);
       send(res, 200, o);
     });
   }
@@ -635,15 +519,15 @@ function route(req, res) {
       if (!types[x.type]) return send(res, 400, { error: 'type 必须是 in（入库）/ out（出库）/ set（盘点）' });
       const qty = Number(x.qty);
       if (!Number.isFinite(qty) || qty < 0) return send(res, 400, { error: '数量必须是非负数字' });
-      d = read();
+      d = store.read();
       const inv = (d.inventory || []).find(v => v.sku === x.sku);
       if (!inv) return send(res, 404, { error: '库存条目不存在' });
       const before = Number(inv.stock);
       if (x.type === 'in') inv.stock = before + qty;
       else if (x.type === 'out') inv.stock = Math.max(0, before - qty);
       else inv.stock = qty;
-      audit(d, '库存调整（' + types[x.type] + '）', inv.sku + ' ' + before + '→' + inv.stock + (x.reason ? ' ' + x.reason : ''), opOf(req));
-      save(d);
+      store.audit(d, '库存调整（' + types[x.type] + '）', inv.sku + ' ' + before + '→' + inv.stock + (x.reason ? ' ' + x.reason : ''), opOf(req));
+      store.save(d);
       send(res, 200, inv);
     });
   }
@@ -651,20 +535,20 @@ function route(req, res) {
   // ---- 配送调度 -----------------------------------------------------------
   if (req.method === 'POST' && u.pathname === '/api/dispatch') {
     return body(req, x => {
-      d = read();
+      d = store.read();
       const v = (d.vehicles || []).find(v => v.name === x.vehicle);
       if (!v) return send(res, 404, { error: '车辆不存在' });
       if (!String(x.route || '').trim()) return send(res, 400, { error: '配送路线不能为空' });
       v.route = String(x.route).trim();
       v.load = x.load || '已安排';
-      audit(d, '人工安排配送', v.name + ' ' + v.route, opOf(req));
-      save(d);
+      store.audit(d, '人工安排配送', v.name + ' ' + v.route, opOf(req));
+      store.save(d);
       send(res, 200, v);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/delivery/status') {
     return body(req, x => {
-      d = read();
+      d = store.read();
       const RANK = { '未安排': 0, '待配送': 1, '配送中': 2, '已送达': 3 };
       const o = d.orders.find(v => v.id === x.orderId);
       if (!o || !(x.status in RANK)) return send(res, 400, { error: '订单或配送状态无效' });
@@ -672,8 +556,8 @@ function route(req, res) {
       const cur = RANK[o.deliveryStatus] ?? 0;
       if (RANK[x.status] < cur) return send(res, 409, { error: '配送状态只能前进，不能回退（当前：' + (o.deliveryStatus || '未安排') + '）' });
       o.deliveryStatus = x.status;
-      audit(d, '更新配送状态', o.id + ' → ' + x.status, opOf(req));
-      save(d);
+      store.audit(d, '更新配送状态', o.id + ' → ' + x.status, opOf(req));
+      store.save(d);
       send(res, 200, o);
     });
   }
@@ -689,7 +573,7 @@ function route(req, res) {
     return body(req, x => {
       const sku = String(x.sku || '').trim(), name = String(x.name || '').trim();
       if (!sku || !name) return send(res, 400, { error: 'SKU 和商品名称必填' });
-      d = read();
+      d = store.read();
       if (d.products.some(p => p.sku === sku)) return send(res, 409, { error: 'SKU ' + sku + ' 已存在' });
       const prod = { sku, name, aliases: aliasList(x.aliases) || [] };
       d.products.unshift(prod);
@@ -700,15 +584,15 @@ function route(req, res) {
         if (!inv) d.inventory.push({ sku, name, stock: stock ?? 0, safe: safe ?? 0, unit: String(x.unit || '件').trim() || '件', cost: cost ?? 0 });
         else Object.assign(inv, { name, stock: stock ?? inv.stock, safe: safe ?? inv.safe, cost: cost ?? inv.cost, unit: String(x.unit || inv.unit || '件').trim() || '件' });
       }
-      audit(d, '新增商品', sku + ' ' + name, opOf(req));
-      save(d);
+      store.audit(d, '新增商品', sku + ' ' + name, opOf(req));
+      store.save(d);
       send(res, 201, prod);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/products/update') {
     return body(req, x => {
       const sku = String(x.sku || '').trim();
-      d = read();
+      d = store.read();
       const prod = d.products.find(p => p.sku === sku);
       if (!prod) return send(res, 404, { error: '商品不存在' });
       const name = String(x.name || '').trim();
@@ -726,23 +610,23 @@ function route(req, res) {
         if (String(x.unit || '').trim()) inv.unit = String(x.unit).trim();
         inv.name = prod.name;
       }
-      audit(d, '修改商品', sku, opOf(req));
-      save(d);
+      store.audit(d, '修改商品', sku, opOf(req));
+      store.save(d);
       send(res, 200, prod);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/products/delete') {
     return body(req, x => {
       const sku = String(x.sku || '').trim();
-      d = read();
+      d = store.read();
       const i = d.products.findIndex(p => p.sku === sku);
       if (i < 0) return send(res, 404, { error: '商品不存在' });
       const invIndex = d.inventory.findIndex(v => v.sku === sku);
       if (invIndex >= 0 && !x.cascade) return send(res, 409, { error: '该商品存在库存条目，需级联删除库存', needCascade: true });
       d.products.splice(i, 1);
       if (invIndex >= 0) d.inventory.splice(invIndex, 1);
-      audit(d, '删除商品', sku + (invIndex >= 0 ? '（含库存条目）' : ''), opOf(req));
-      save(d);
+      store.audit(d, '删除商品', sku + (invIndex >= 0 ? '（含库存条目）' : ''), opOf(req));
+      store.save(d);
       send(res, 200, { ok: true });
     });
   }
@@ -750,20 +634,20 @@ function route(req, res) {
     return body(req, x => {
       const name = String(x.name || '').trim();
       if (!name) return send(res, 400, { error: '客户名称必填' });
-      d = read();
+      d = store.read();
       if (d.customers.some(c => c.name === name || (c.aliases || []).includes(name))) return send(res, 409, { error: '客户或别名已存在：' + name });
       const maxNo = d.customers.reduce((n, c) => Math.max(n, parseInt(String(c.id).slice(1), 10) || 0), 0);
       const cust = { id: 'C' + String(maxNo + 1).padStart(3, '0'), name, aliases: aliasList(x.aliases) || [] };
       d.customers.push(cust);
-      audit(d, '新增客户', name, opOf(req));
-      save(d);
+      store.audit(d, '新增客户', name, opOf(req));
+      store.save(d);
       send(res, 201, cust);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/customers/update') {
     return body(req, x => {
       const key = String(x.id || x.name || '').trim();
-      d = read();
+      d = store.read();
       const cust = d.customers.find(c => c.id === key || c.name === key);
       if (!cust) return send(res, 404, { error: '客户不存在' });
       const newName = String(x.newName || '').trim();
@@ -771,20 +655,20 @@ function route(req, res) {
       if (newName) cust.name = newName;
       const aliases = aliasList(x.aliases);
       if (aliases !== undefined) cust.aliases = aliases;
-      audit(d, '修改客户', cust.name, opOf(req));
-      save(d);
+      store.audit(d, '修改客户', cust.name, opOf(req));
+      store.save(d);
       send(res, 200, cust);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/customers/delete') {
     return body(req, x => {
       const key = String(x.id || x.name || '').trim();
-      d = read();
+      d = store.read();
       const i = d.customers.findIndex(c => c.id === key || c.name === key);
       if (i < 0) return send(res, 404, { error: '客户不存在' });
       const [removed] = d.customers.splice(i, 1);
-      audit(d, '删除客户', removed.name, opOf(req));
-      save(d);
+      store.audit(d, '删除客户', removed.name, opOf(req));
+      store.save(d);
       send(res, 200, { ok: true });
     });
   }
@@ -792,19 +676,19 @@ function route(req, res) {
     return body(req, x => {
       const name = String(x.name || '').trim();
       if (!name) return send(res, 400, { error: '车辆名称必填' });
-      d = read();
+      d = store.read();
       if (d.vehicles.some(v => v.name === name)) return send(res, 409, { error: '车辆已存在：' + name });
       const v = { name, capacity: String(x.capacity || '').trim() || '—', route: String(x.route || '').trim(), load: '待安排' };
       d.vehicles.push(v);
-      audit(d, '新增车辆', name, opOf(req));
-      save(d);
+      store.audit(d, '新增车辆', name, opOf(req));
+      store.save(d);
       send(res, 201, v);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/vehicles/update') {
     return body(req, x => {
       const key = String(x.name || '').trim();
-      d = read();
+      d = store.read();
       const v = d.vehicles.find(v => v.name === key);
       if (!v) return send(res, 404, { error: '车辆不存在' });
       const newName = String(x.newName || '').trim();
@@ -813,20 +697,20 @@ function route(req, res) {
       if (String(x.capacity || '').trim()) v.capacity = String(x.capacity).trim();
       if (String(x.route || '').trim()) v.route = String(x.route).trim();
       if (String(x.load || '').trim()) v.load = String(x.load).trim();
-      audit(d, '修改车辆', v.name, opOf(req));
-      save(d);
+      store.audit(d, '修改车辆', v.name, opOf(req));
+      store.save(d);
       send(res, 200, v);
     });
   }
   if (req.method === 'POST' && u.pathname === '/api/vehicles/delete') {
     return body(req, x => {
       const key = String(x.name || '').trim();
-      d = read();
+      d = store.read();
       const i = d.vehicles.findIndex(v => v.name === key);
       if (i < 0) return send(res, 404, { error: '车辆不存在' });
       const [removed] = d.vehicles.splice(i, 1);
-      audit(d, '删除车辆', removed.name, opOf(req));
-      save(d);
+      store.audit(d, '删除车辆', removed.name, opOf(req));
+      store.save(d);
       send(res, 200, { ok: true });
     });
   }
@@ -853,7 +737,7 @@ server.on('error', e => {
 server.listen(PORT, HOST, () => {
   const actual = server.address() ? server.address().port : PORT;
   console.log('LISTENING_PORT=' + actual); // 机器可读：测试/脚本用 PORT=0 时从这行取实际端口
-  const cfg = readConfig();
+  const cfg = store.readConfig();
   console.log('[' + cfg.app.name + '] v' + APP_VERSION + ' running at http://localhost:' + actual);
   console.log('  数据文件：' + DATA_FILE);
   console.log('  商家配置：' + CONFIG_FILE);
