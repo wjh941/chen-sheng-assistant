@@ -383,6 +383,25 @@ test('设置 ACCESS_TOKEN 后未登录访问被拦截，登录后放行，登出
     assert.equal((await request(p, '/api/overview', 'GET', null, { Cookie: cookie })).status, 200);
     assert.equal((await request(p, '/logout', 'GET', null, { Cookie: cookie })).status, 302);
     assert.equal((await request(p, '/api/overview', 'GET', null, { Cookie: cookie })).status, 401); // 登出后立即失效
+    // 畸形 Cookie（百分号编码非法）应按未登录处理，返回 401 而不是 500
+    assert.equal((await request(p, '/api/overview', 'GET', null, { Cookie: 'ops_token=%zz' })).status, 401);
+    assert.equal((await request(p, '/api/overview', 'GET', null, { Cookie: 'ops_token=%E4%BB%8A' })).status, 401);
+  });
+});
+
+test('删除中间客户后新增客户不产生撞号', async () => {
+  await withServer({}, async p => {
+    await request(p, '/api/customers/add', 'POST', { name: '甲' });
+    await request(p, '/api/customers/add', 'POST', { name: '乙' });
+    const list1 = (await request(p, '/api/overview')).body;
+    // 删除 C001，再新增：新 ID 不能复用 C001
+    await request(p, '/api/customers/delete', 'POST', { id: 'C001' });
+    const created = await request(p, '/api/customers/add', 'POST', { name: '丙' });
+    assert.equal(created.status, 201);
+    assert.notEqual(created.body.id, 'C001');
+    const list2 = (await request(p, '/api/overview')).body;
+    const ids = list2.customers.map(c => c.id);
+    assert.equal(new Set(ids).size, ids.length, '客户 ID 不应重复');
   });
 });
 

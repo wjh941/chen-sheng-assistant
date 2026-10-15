@@ -160,9 +160,15 @@ function opOf(req) {
   return v.slice(0, 20);
 }
 
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+};
+
 function send(res, status, body, type, extraHeaders) {
   if (res.headersSent) { res.end(); return; }
-  res.writeHead(status, Object.assign({ 'Content-Type': type || 'application/json; charset=utf-8' }, extraHeaders || {}));
+  res.writeHead(status, Object.assign({}, SECURITY_HEADERS, { 'Content-Type': type || 'application/json; charset=utf-8' }, extraHeaders || {}));
   if (Buffer.isBuffer(body)) return res.end(body);
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 }
@@ -183,7 +189,12 @@ function safeEqual(a, b) {
 
 function hasToken(req) {
   const m = /(?:^|;\s*)ops_token=([^;]+)/.exec(req.headers.cookie || '');
-  return !!m && safeEqual(decodeURIComponent(m[1]), sessionSig());
+  if (!m) return false;
+  // 畸形 Cookie（如 ops_token=%zz）会令 decodeURIComponent 抛 URIError，
+  // 必须按“未登录”处理而不是让它炸成 500
+  let token;
+  try { token = decodeURIComponent(m[1]); } catch { return false; }
+  return safeEqual(token, sessionSig());
 }
 
 function tokenOk(req) {
@@ -700,7 +711,8 @@ function route(req, res) {
       if (!name) return send(res, 400, { error: '客户名称必填' });
       d = read();
       if (d.customers.some(c => c.name === name || (c.aliases || []).includes(name))) return send(res, 409, { error: '客户或别名已存在：' + name });
-      const cust = { id: 'C' + String(d.customers.length + 1).padStart(3, '0'), name, aliases: aliasList(x.aliases) || [] };
+      const maxNo = d.customers.reduce((n, c) => Math.max(n, parseInt(String(c.id).slice(1), 10) || 0), 0);
+      const cust = { id: 'C' + String(maxNo + 1).padStart(3, '0'), name, aliases: aliasList(x.aliases) || [] };
       d.customers.push(cust);
       audit(d, '新增客户', name, opOf(req));
       save(d);
