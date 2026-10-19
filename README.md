@@ -1,5 +1,7 @@
 # 本地经营智能助手（多商家适配版）
 
+> **“账目清楚，生意长久。”** —— 生意经
+
 [![CI](https://github.com/wjh941/chen-sheng-assistant/actions/workflows/test.yml/badge.svg)](https://github.com/wjh941/chen-sheng-assistant/actions/workflows/test.yml) ![Node.js ≥ 18](https://img.shields.io/badge/Node.js%20%E2%89%A5%2018-339933) ![零第三方依赖](https://img.shields.io/badge/%E9%9B%B6%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9D%E8%B5%96-2ea44f) ![版本 v0.9.0](https://img.shields.io/badge/%E7%89%88%E6%9C%AC%20v0.9.0-0969da)
 
 面向中小食品/副食商家的本地经营工作台：在浏览器中完成订单登记、审核、拣货与配送调度，数据全部保存在本机。外部账本（默认适配速达 5000.Online-Pro）仍是正式业务账本，本项目第一阶段不连接、不读取、不修改其数据库。
