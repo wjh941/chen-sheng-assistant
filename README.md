@@ -1,6 +1,6 @@
 # 本地经营智能助手（多商家适配版）
 
-> **“账目清楚，生意长久。”** —— 生意经
+> 🎬 **使用场景**：东莞的食品贸易商每天用微信文字、Excel、聊天截图收订单，靠人肉对账和脑子记库存。这个工具把这条流程数字化——订单状态机推进、库存预警、账本审计，而且完全本地运行，数据不出他的电脑。
 
 [![CI](https://github.com/wjh941/chen-sheng-assistant/actions/workflows/test.yml/badge.svg)](https://github.com/wjh941/chen-sheng-assistant/actions/workflows/test.yml) ![Node.js ≥ 18](https://img.shields.io/badge/Node.js%20%E2%89%A5%2018-339933) ![零第三方依赖](https://img.shields.io/badge/%E9%9B%B6%E7%AC%AC%E4%B8%89%E6%96%B9%E4%BE%9D%E8%B5%96-2ea44f) ![版本 v0.9.0](https://img.shields.io/badge/%E7%89%88%E6%9C%AC%20v0.9.0-0969da)
 
